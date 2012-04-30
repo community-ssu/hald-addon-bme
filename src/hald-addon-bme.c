@@ -515,6 +515,18 @@ out:
   return result;
 }
 
+static const char * get_capacity_state_string()
+{
+  switch(global_bme.charge_level.capacity_state)
+  {
+    case LOW:return "low";
+    case FULL:return "full";
+    case EMPTY:return "empty";
+    case OK:return "ok";
+    default:return "unknown";
+  }
+}
+
 static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_for_changes)
 {
 #define CHECK_INT(f,fun) if( !check_for_changes || (global_battery.f != battery_info->f)) \
@@ -597,6 +609,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   if(global_bme.charge_level.capacity_state != capacity_state)
   {
     global_bme.charge_level.capacity_state = capacity_state;
+    libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", get_capacity_state_string());
     seng_capacity_state_change();
   }
 
