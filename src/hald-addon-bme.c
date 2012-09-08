@@ -74,12 +74,15 @@ bme global_bme={{0,}};
 int global_charging = 0;
 int global_charger_connected = 0;
 
+enum { PATTERN_NONE, PATTERN_FULL, PATTERN_CHARGING, PATTERN_BOOST } global_pattern;
+
 #define DEBUG
 #define DEBUG_FILE      "/tmp/hald-addon-bme.log"
 
 #define UEVENT_FILE_PATH "/sys/class/power_supply/bq27200-0/uevent"
 #define REGISTERS_FILE_PATH "/sys/class/power_supply/bq27200-0/registers"
 #define MODE_FILE_PATH "/sys/class/power_supply/bq24150a-0/mode"
+#define STAT_PIN_FILE_PATH "/sys/class/power_supply/bq24150a-0/stat_pin_enable"
 
 /*
 Standard entries:
@@ -809,8 +812,20 @@ out:
   return TRUE;
 }
 
+static const char * get_pattern_name(int pattern)
+{
+  switch(pattern)
+  {
+    case PATTERN_FULL: return "PatternBatteryFull";
+    case PATTERN_CHARGING: return "PatternBatteryCharging";
+    case PATTERN_BOOST: return "PatternBoost";
+    default: return NULL;
+  }
+}
+
 static gboolean poll_uevent(gpointer data)
 {
+  unsigned int pattern;
   bq27200 battery_info={0,};
   battery_info.power_supply_capacity = -1;
   strcpy(battery_info.power_supply_mode, global_battery.power_supply_mode);
@@ -822,6 +837,53 @@ static gboolean poll_uevent(gpointer data)
   hald_addon_bme_update_hal(&battery_info,TRUE);
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
+
+  if (global_bme.charge_level.capacity_state == FULL && global_charging)
+    pattern = PATTERN_FULL;
+  else if (global_bme.charge_level.capacity_state != FULL && global_charging)
+    pattern = PATTERN_CHARGING;
+  else if (strstr(global_battery.power_supply_mode, "boost"))
+    pattern = PATTERN_BOOST;
+  else
+    pattern = PATTERN_NONE;
+
+  if (global_pattern != pattern)
+  {
+      DBusMessage * msg;
+      const char * name;
+
+      if (global_pattern != PATTERN_NONE &&
+          (name = get_pattern_name(global_pattern)))
+      {
+        msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", "req_led_pattern_deactivate");
+        if (msg &&
+            dbus_message_append_args(msg, DBUS_TYPE_STRING, name, DBUS_TYPE_INVALID) &&
+            dbus_connection_send(system_dbus, msg, 0))
+        {
+          dbus_connection_flush(system_dbus);
+          global_pattern = PATTERN_NONE;
+        }
+
+        if (msg)
+          dbus_message_unref(msg);
+      }
+
+      if (global_pattern == PATTERN_NONE &&
+          (name = get_pattern_name(pattern)))
+      {
+        msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", "req_led_pattern_activate");
+        if (msg &&
+            dbus_message_append_args(msg, DBUS_TYPE_STRING, name, DBUS_TYPE_INVALID) &&
+            dbus_connection_send(system_dbus, msg, 0))
+        {
+          dbus_connection_flush(system_dbus);
+          global_pattern = pattern;
+        }
+
+        if (msg)
+          dbus_message_unref(msg);
+      }
+  }
 
   if (data) return FALSE;
 
@@ -908,6 +970,23 @@ static gint hald_addon_bme_mode_setup_poll(void)
   return g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_mode_cb, NULL);
 }
 
+static int hald_addon_bme_disable_stat_pin(void)
+{
+  FILE * fp;
+  int ret;
+  if((fp = fopen(STAT_PIN_FILE_PATH,"w")) == NULL)
+  {
+    log_print("unable to open %s(%s)\n",STAT_PIN_FILE_PATH,strerror(errno));
+    return -1;
+  }
+  ret = fputs("0", fp);
+  fclose(fp);
+  if (ret < 0)
+    return -1;
+  else
+    return 0;
+}
+
 int main (int argc, char **argv)
 {
   int result = 1;
@@ -942,6 +1021,12 @@ int main (int argc, char **argv)
   if ( hald_addon_bme_mode_setup_poll() == -1 )
   {
     log_print("charger mode poll setup failed\n\n");
+    goto out;
+  }
+
+  if ( hald_addon_bme_disable_stat_pin() == -1 )
+  {
+    log_print("disabling stat pin failed\n\n");
     goto out;
   }
 
