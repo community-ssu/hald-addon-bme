@@ -381,10 +381,15 @@ static void hald_addon_bme_status_info()
 
 static void hald_addon_bme_timeleft_info()
 {
+  uint32 minutes = 0;
   log_print("%s\n",__func__);
+  if (global_battery.power_supply_time_to_empty_avg)
+    minutes = global_battery.power_supply_time_to_empty_avg/60;
+  else if (global_battery.power_supply_time_to_full_now)
+    minutes = global_battery.power_supply_time_to_full_now/60;
   send_dbus_signal("battery_timeleft",
-      DBUS_TYPE_UINT32, &global_battery.power_supply_time_to_empty_avg,
-      DBUS_TYPE_UINT32, &global_battery.power_supply_time_to_full_now,
+      DBUS_TYPE_UINT32, &minutes,
+      DBUS_TYPE_UINT32, &minutes,
       DBUS_TYPE_INVALID);
 }
 
