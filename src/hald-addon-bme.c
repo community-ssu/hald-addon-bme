@@ -63,7 +63,7 @@ bq27200 global_battery={0,};
 
 typedef struct {
   struct {
-    enum {EMPTY,LOW,OK,FULL,UNKNOWN}capacity_state;
+    enum {EMPTY,LOW,OK,FULL}capacity_state;
     uint32 current;
     uint32 percentage;
   }charge_level;
@@ -574,8 +574,7 @@ static const char * get_capacity_state_string()
     case LOW:return "low";
     case FULL:return "full";
     case EMPTY:return "empty";
-    case OK:return "ok";
-    default:return "unknown";
+    default:return "ok";
   }
 }
 
@@ -615,7 +614,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   }
   if(!check_for_changes)
   {
-    libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "unknown");
+    libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "ok");
     libhal_changeset_set_property_int(cs, "battery.charge_level.current", 0);
     /* is charge_level.design really 8? */
     libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8); /* STATIC */
@@ -694,7 +693,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     else if (!strcmp(battery_info->power_supply_capacity_level, "Critical"))
       capacity_state = EMPTY;
     else
-      capacity_state = UNKNOWN;
+      capacity_state = OK;
   }
   /* registers is in maemo kernel-power */
   /* code taken from upstream kernel */
@@ -985,7 +984,7 @@ int main (int argc, char **argv)
   const char * bq27200_poll_period = getenv ("HAL_PROP_BQ27200_POLL_PERIOD_SECONDS");
 
   log_print (("STARTUP\n\n"));
-  global_bme.charge_level.capacity_state = UNKNOWN;
+  global_bme.charge_level.capacity_state = OK;
 
   if(bq27200_poll_period)
     poll_period =  atoi(bq27200_poll_period);
