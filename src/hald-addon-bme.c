@@ -71,7 +71,6 @@ typedef struct {
 
 bme global_bme={{0,}};
 
-int global_charging = 0;
 int global_charger_connected = 0;
 
 enum { PATTERN_NONE, PATTERN_FULL, PATTERN_CHARGING, PATTERN_BOOST } global_pattern;
@@ -370,7 +369,8 @@ static void hald_addon_bme_status_info()
 {
   log_print("%s\n",__func__);
   send_dbus_signal_(global_charger_connected ? "charger_connected" : "charger_disconnected");
-  send_dbus_signal_(global_charging ? "charger_charging_on" : "charger_charging_off");
+  if (global_bme.charge_level.capacity_state != FULL)
+    send_dbus_signal_(global_charger_connected ? "charger_charging_on" : "charger_charging_off");
   send_battery_state_changed(global_bme.charge_level.current);
 }
 
@@ -589,7 +589,6 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   uint32 capacity_state;
   int calibrated;
   int charger_connected;
-  int charging;
 
   if(battery_info->power_supply_capacity < 0)
     calibrated = 0;
@@ -600,11 +599,6 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     charger_connected = 1;
   else
     charger_connected = 0;
-
-  if (charger_connected && battery_info->power_supply_status == CHARGING)
-    charging = 1;
-  else
-    charging = 0;
 
   cs = libhal_device_new_changeset (udi);
   if (cs == NULL)
@@ -647,15 +641,8 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
         libhal_changeset_set_property_int (cs, "battery.voltage.current", battery_info->power_supply_voltage_now));
 
   CHECK_INT(power_supply_status,
-        libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", charging ? "on" : "off");
-        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charging);
+        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charger_connected);
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == DISCHARGING));
-
-  if (global_charging != charging)
-  {
-    send_dbus_signal_(charging ? "charger_charging_on" : "charger_charging_off");
-    global_charging = charging;
-  }
 
   if(!calibrated)
   {
@@ -732,6 +719,11 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     send_capacity_state_change();
   }
 
+  if (capacity_state == FULL)
+    libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", "full");
+  else
+    libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", charger_connected ? "on" : "off");
+
   if (!calibrated && capacity_state == EMPTY && battery_info->power_supply_capacity > 5)
     battery_info->power_supply_capacity = 5;
 
@@ -785,6 +777,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   if (global_charger_connected != charger_connected)
   {
     send_dbus_signal_(charger_connected ? "charger_connected" : "charger_disconnected");
+    send_dbus_signal_(charger_connected ? "charger_charging_on" : "charger_charging_off");
     global_charger_connected = charger_connected;
   }
 
@@ -827,9 +820,9 @@ static gboolean poll_uevent(gpointer data)
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
 
-  if (global_bme.charge_level.capacity_state == FULL && global_charging)
+  if (global_bme.charge_level.capacity_state == FULL && global_charger_connected)
     pattern = PATTERN_FULL;
-  else if (global_bme.charge_level.capacity_state != FULL && global_charging)
+  else if (global_bme.charge_level.capacity_state != FULL && global_charger_connected)
     pattern = PATTERN_CHARGING;
   else if (strstr(global_battery.power_supply_mode, "boost"))
     pattern = PATTERN_BOOST;
