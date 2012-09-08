@@ -2,6 +2,7 @@
  * hald-addon-bme.c: bme addon for maemo http://wiki.maemo.org/Mer
  *
  * Copyright (C) 2012 Ivaylo Dimitrov <freemangordon@abv.bg>
+ * Copyright (C) 2012 Pali Rohár <pali.rohar@gmail.com>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,8 +34,12 @@
 #include <gio/gio.h>
 #include <ctype.h>
 #include <memory.h>
-#include "hald-addon-bme.h"
+#include <stdint.h>
 
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef int32_t int32;
 
 typedef struct {
 /*  power_supply_name=bq27200-0
