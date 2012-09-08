@@ -308,8 +308,6 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
         battery_info->power_supply_capacity = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_STATUS"))
         battery_info->power_supply_status  = (!strcmp(tmp,"Discharging"))?DISCHARGING:CHARGING;
-      else if(!strcmp(line,"POWER_SUPPLY_PRESENT"))
-        battery_info->power_supply_present = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
         battery_info->power_supply_voltage_now = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_CURRENT_NOW"))
@@ -625,7 +623,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     libhal_changeset_set_property_int(cs, "battery.charge_level.percentage", 0);
     libhal_changeset_set_property_string(cs, "battery.charge_level.unit", "bars"); /* STATIC */
     libhal_changeset_set_property_bool(cs, "battery.is_rechargeable", TRUE); /* STATIC */
-    libhal_changeset_set_property_bool(cs, "battery.present", TRUE);
+    libhal_changeset_set_property_bool(cs, "battery.present", TRUE); /* STATIC */
     libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", FALSE);
     libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", TRUE);
     libhal_changeset_set_property_int(cs, "battery.remaining_time", 0);
@@ -644,14 +642,6 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
     libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", "off");
     libhal_changeset_set_property_bool(cs, "maemo.rechargeable.positive_rate", FALSE); /* STATIC */
-  }
-  CHECK_INT(power_supply_present,
-        libhal_changeset_set_property_bool (cs, "battery.present", battery_info->power_supply_present));
-  if(!battery_info->power_supply_present)
-  {
-      global_bme.charge_level.capacity_state = UNKNOWN;
-      libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "unknown");
-      goto out;
   }
 
   CHECK_INT(power_supply_voltage_now,
