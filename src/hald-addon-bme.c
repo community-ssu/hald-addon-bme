@@ -18,6 +18,7 @@
  *
  */
 
+#include <math.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -38,32 +39,32 @@
 typedef struct {
 /*  power_supply_name=bq27200-0
   power_supply_type=battery*/
-  enum{CHARGING,DISCARGING}power_supply_status;
+  enum{CHARGING,DISCHARGING}power_supply_status;
   uint32 power_supply_present;
   uint32 power_supply_voltage_now;
-  uint32 power_supply_current_now;
-  uint32 power_supply_capacity;
+  int32  power_supply_current_now;
+  int32  power_supply_capacity;
   uint32 power_supply_temp;
-  uint32 power_supply_time_to_empty_now;
   uint32 power_supply_time_to_empty_avg;
-  char  power_supply_technology[32];
+  uint32 power_supply_time_to_full_now;
+  char   power_supply_technology[32];
   uint32 power_supply_charge_full;
   uint32 power_supply_charge_now;
-  uint32 power_supply_charge_full_design;
+  uint32 power_supply_flags_register;
+  char   power_supply_capacity_level[32];
+  char   power_supply_mode[32];
 } bq27200;
 
 bq27200 global_battery={0,};
 
-#define BATTERY_CHARGE_LEVEL_DESIGN 8
 #define POWER_SUPPLY_CAPACITY_THRESHOLD_FULL 95
-#define POWER_SUPPLY_CAPACITY_THRESHOLD_LOW 25
-#define POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY 2
+#define POWER_SUPPLY_CAPACITY_THRESHOLD_LOW 15
+#define POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY 5
 
 typedef struct {
   struct {
     enum {EMPTY,LOW,OK,FULL,UNKNOWN}capacity_state;
     uint32 current;
-    uint32 design;
     uint32 percentage;
   }charge_level;
 }bme;
@@ -74,15 +75,29 @@ bme global_bme={{0,}};
 #define DEBUG_FILE      "/tmp/hald-addon-bme.log"
 
 #define UEVENT_FILE_PATH "/sys/class/power_supply/bq27200-0/uevent"
+#define REGISTERS_FILE_PATH "/sys/class/power_supply/bq27200-0/registers"
+#define MODE_FILE_PATH "/sys/class/power_supply/bq24150a-0/mode"
+
 /*
-capacity            device              technology          type
-charge_full         power               temp                uevent
-charge_full_design  present             time_to_empty_avg   voltage_now
-charge_now          status              time_to_empty_now
-current_now         subsystem           time_to_full_now
-  */
+Standard entries:
+  capacity            device              technology          type
+  charge_full         power               temp                uevent
+  charge_full_design  present             time_to_empty_avg   voltage_now
+  charge_now          status              time_to_empty_now
+  current_now         subsystem           time_to_full_now
+
+Additional upstream entries:
+  capacity_level
+  cycle_count
+  energy_now
+
+Additional maemo entries:
+  registers
+*/
+
 /*
- battery.charge_level.capacity_state = 'ok'  (string)
+BME hal properties:
+  battery.charge_level.capacity_state = 'ok'  (string)
   battery.charge_level.current = 5  (0x5)  (int)
   battery.charge_level.design = 8  (0x8)  (int)
   battery.charge_level.last_full = 0  (0x0)  (int)
@@ -113,7 +128,7 @@ current_now         subsystem           time_to_full_now
   maemo.charger.type = 'host 500 mA'  (string)
   maemo.rechargeable.charging_status = 'on'  (string)
   maemo.rechargeable.positive_rate = false  (bool)
-  */
+*/
 DBusConnection *hal_dbus = 0;
 DBusConnection *system_dbus = 0;
 DBusConnection *server_dbus = 0;
@@ -257,8 +272,9 @@ static gboolean seng_capacity_state_change()
   return send_dbus_signal_(name);
 }
 
-static gboolean send_battery_state_changed(uint32 now,uint32 max)
+static gboolean send_battery_state_changed(uint32 now)
 {
+  uint32 max = 8;
   log_print("send dbus signal: %s (bars=%d/%d)\n", "battery_state_changed",now,max);
   return send_dbus_signal("battery_state_changed",DBUS_TYPE_UINT32, &now, DBUS_TYPE_UINT32, &max, DBUS_TYPE_INVALID);
 }
@@ -285,7 +301,7 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
       if(!strcmp(line,"POWER_SUPPLY_CAPACITY"))
         battery_info->power_supply_capacity = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_STATUS"))
-        battery_info->power_supply_status  = (!strcmp(tmp,"Discharging"))?DISCARGING:CHARGING;
+        battery_info->power_supply_status  = (!strcmp(tmp,"Discharging"))?DISCHARGING:CHARGING;
       else if(!strcmp(line,"POWER_SUPPLY_PRESENT"))
         battery_info->power_supply_present = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
@@ -294,8 +310,8 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
         battery_info->power_supply_current_now = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TEMP"))
         battery_info->power_supply_temp = atoi(tmp);
-      else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_EMPTY_NOW"))
-        battery_info->power_supply_time_to_empty_now = atoi(tmp);
+      else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_FULL_NOW"))
+        battery_info->power_supply_time_to_full_now = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_EMPTY_AVG"))
         battery_info->power_supply_time_to_empty_avg = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TECHNOLOGY"))
@@ -306,10 +322,58 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
         battery_info->power_supply_charge_full = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_CHARGE_NOW"))
         battery_info->power_supply_charge_now = atoi(tmp)/1000;
-      else if(!strcmp(line,"POWER_SUPPLY_CHARGE_FULL_DESIGN"))
-        battery_info->power_supply_charge_full_design = atoi(tmp)/1000;
+      else if(!strcmp(line,"POWER_SUPPLY_CAPACITY_LEVEL"))
+        strncpy(battery_info->power_supply_capacity_level,
+                tmp,
+                sizeof(battery_info->power_supply_capacity_level)-1);
+      /* Nokia did not configured POWER_SUPPLY_CHARGE_FULL_DESIGN, so ignore it */
     }
   }
+  fclose(fp);
+
+  return TRUE;
+}
+
+static gboolean hald_addon_bme_get_registers_data(bq27200 * battery_info)
+{
+  FILE * fp;
+
+  char line[256];
+  if((fp = fopen(REGISTERS_FILE_PATH,"r")) == NULL)
+  {
+    log_print("unable to open %s(%s)\n",REGISTERS_FILE_PATH,strerror(errno));
+    return FALSE;
+  }
+  while(fgets(line,sizeof(line),fp))
+  {
+    char*tmp;
+    tmp = strchr(line,'=');
+    if(tmp)
+    {
+      *tmp=0;
+      tmp++;
+      tmp[strlen(tmp)-1] = 0;
+      if(!strcmp(line,"0x0A"))
+        battery_info->power_supply_flags_register = atoi(tmp);
+    }
+  }
+  fclose(fp);
+
+  return TRUE;
+}
+
+
+static gboolean hald_addon_bme_get_mode_data(bq27200 * battery_info)
+{
+  FILE * fp;
+
+  char line[256];
+  if((fp = fopen(MODE_FILE_PATH,"r")) == NULL)
+  {
+    log_print("unable to open %s(%s)\n",MODE_FILE_PATH,strerror(errno));
+    return FALSE;
+  }
+  fgets(battery_info->power_supply_mode,sizeof(battery_info->power_supply_mode),fp);
   fclose(fp);
 
   return TRUE;
@@ -536,6 +600,12 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   LibHalChangeSet *cs;
   uint32 charge_level_current;
   uint32 capacity_state;
+  int calibrated;
+
+  if(battery_info->power_supply_capacity < 0)
+    calibrated = 0;
+  else
+    calibrated = 1;
 
   cs = libhal_device_new_changeset (udi);
   if (cs == NULL)
@@ -546,14 +616,32 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   if(!check_for_changes)
   {
     libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "unknown");
-    libhal_changeset_set_property_int(cs, "battery.charge_level.design", BATTERY_CHARGE_LEVEL_DESIGN);
-    libhal_changeset_set_property_string(cs, "battery.charge_level.unit","bars");
-    libhal_changeset_set_property_bool(cs, "battery.is_rechargeable",TRUE);
-    libhal_changeset_set_property_bool(cs, "battery.remaining_time.calculate_per_time", FALSE);
-    libhal_changeset_set_property_string(cs, "battery.reporting.unit", "mAh");
-    libhal_changeset_set_property_string(cs, "battery.type","pda");
-    libhal_changeset_set_property_int(cs, "battery.voltage.design",4200);
-    libhal_changeset_set_property_string(cs, "battery.voltage.unit","mV");
+    libhal_changeset_set_property_int(cs, "battery.charge_level.current", 0);
+    /* is charge_level.design really 8? */
+    libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.charge_level.last_full", 0); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.charge_level.percentage", 0);
+    libhal_changeset_set_property_string(cs, "battery.charge_level.unit", "bars"); /* STATIC */
+    libhal_changeset_set_property_bool(cs, "battery.is_rechargeable", TRUE); /* STATIC */
+    libhal_changeset_set_property_bool(cs, "battery.present", TRUE);
+    libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", FALSE);
+    libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", TRUE);
+    libhal_changeset_set_property_int(cs, "battery.remaining_time", 0);
+    libhal_changeset_set_property_bool(cs, "battery.remaining_time.calculate_per_time", FALSE); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.reporting.current", 0);
+    /* no way how to read battery design current, maybe twl-madc bsi channel... */
+    libhal_changeset_set_property_int(cs, "battery.reporting.design", 1272); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.reporting.last_full", 0); /* STATIC */
+    libhal_changeset_set_property_string(cs, "battery.reporting.unit", "mAh"); /* STATIC */
+    libhal_changeset_set_property_string(cs, "battery.type","pda"); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.voltage.current", 0);
+    /* is voltage design really 4200 ? */
+    libhal_changeset_set_property_int(cs, "battery.voltage.design", 4200); /* STATIC */
+    libhal_changeset_set_property_string(cs, "battery.voltage.unit", "mV"); /* STATIC */
+    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "disconnected");
+    libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
+    libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", "off");
+    libhal_changeset_set_property_bool(cs, "maemo.rechargeable.positive_rate", FALSE); /* STATIC */
   }
   CHECK_INT(power_supply_present,
         libhal_changeset_set_property_bool (cs, "battery.present", battery_info->power_supply_present));
@@ -567,44 +655,78 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   CHECK_INT(power_supply_voltage_now,
         libhal_changeset_set_property_int (cs, "battery.voltage.current", battery_info->power_supply_voltage_now));
 
-  CHECK_INT(power_supply_charge_now,
-        libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
-
-  CHECK_INT(power_supply_charge_full_design,
-        libhal_changeset_set_property_int (cs, "battery.reporting.design", battery_info->power_supply_charge_full_design));
-
-
   CHECK_INT(power_supply_status,
+        libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", battery_info->power_supply_status == CHARGING ? "on" : "off");
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", battery_info->power_supply_status == CHARGING);
-        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == DISCARGING));
+        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == DISCHARGING));
 
-  charge_level_current = battery_info->power_supply_charge_now/(battery_info->power_supply_charge_full_design/BATTERY_CHARGE_LEVEL_DESIGN);
-  if(global_bme.charge_level.current != charge_level_current)
+  if(!calibrated)
   {
-    global_bme.charge_level.current = charge_level_current;
-    libhal_changeset_set_property_int (cs, "battery.charge_level.current",charge_level_current);
-    send_battery_state_changed(charge_level_current,BATTERY_CHARGE_LEVEL_DESIGN);
+    /* Battery is not calibrated, calculate the percentage somehow... */
+    /* We are expecting that voltage function of percentage will be some logarithm */
+    /* Some approximation could be: */
+    /* voltage = log(percentage/50+1)/log(100/50+1)*(4000-3200)+3200 */
+    /* So percentage will be: */
+    /* percentage = (exp((voltage-3200)*log(3)/800)-1)*50 */
+    /* Also make sure that percentage will not be higher than 90% */
+    battery_info->power_supply_capacity = ((exp((battery_info->power_supply_voltage_now-3200)*log(3)/800.0)-1.0)*50.0);
+    if (battery_info->power_supply_capacity > 90)
+      battery_info->power_supply_capacity = 90;
+    if (battery_info->power_supply_capacity < 3)
+      battery_info->power_supply_capacity = 3;
   }
-  if(!battery_info->power_supply_capacity)
-  {
-    /* Battery is not calibrated, calculate the percentage */
-    battery_info->power_supply_capacity = (100 * battery_info->power_supply_charge_now) / battery_info->power_supply_charge_full_design;
-  }
 
-  CHECK_INT(power_supply_capacity,
-        libhal_changeset_set_property_int (cs, "battery.charge_level.percentage", battery_info->power_supply_capacity));
-
-  if(battery_info->power_supply_capacity > POWER_SUPPLY_CAPACITY_THRESHOLD_FULL)
-    capacity_state = FULL;
-  else if(battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW)
+  /* capacity_level is in upstream kernel */
+  if(battery_info->power_supply_capacity_level[0])
   {
-    if(battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY)
+    if (!strcmp(battery_info->power_supply_capacity_level, "Full"))
+      capacity_state = FULL;
+    else if (!strcmp(battery_info->power_supply_capacity_level, "High"))
+      capacity_state = FULL;
+    else if (!strcmp(battery_info->power_supply_capacity_level, "Normal"))
+    {
+      if (battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
+        capacity_state = LOW;
+      else
+        capacity_state = OK;
+    }
+    /* Low is reported when EDV1 is set which means battery is empty */
+    else if (!strcmp(battery_info->power_supply_capacity_level, "Low"))
+      capacity_state = EMPTY;
+    else if (!strcmp(battery_info->power_supply_capacity_level, "Critical"))
       capacity_state = EMPTY;
     else
+      capacity_state = UNKNOWN;
+  }
+  /* registers is in maemo kernel-power */
+  /* code taken from upstream kernel */
+  else if (battery_info->power_supply_flags_register)
+  {
+    if (battery_info->power_supply_flags_register & 0x20) /* FLAG_FC */
+      capacity_state = FULL;
+    else if (battery_info->power_supply_flags_register & 0x01) /* FLAG_EDV1 */
+      capacity_state = EMPTY;
+    else if (battery_info->power_supply_flags_register & 0x00) /* FLAG_EDVF */
+      capacity_state = EMPTY;
+    else if (battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
       capacity_state = LOW;
+    else
+      capacity_state = OK;
   }
   else
-    capacity_state = OK;
+  {
+    if(battery_info->power_supply_capacity > POWER_SUPPLY_CAPACITY_THRESHOLD_FULL)
+      capacity_state = FULL;
+    else if(battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW)
+    {
+      if(battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY)
+        capacity_state = EMPTY;
+      else
+        capacity_state = LOW;
+    }
+    else
+      capacity_state = OK;
+  }
 
   if(global_bme.charge_level.capacity_state != capacity_state)
   {
@@ -613,13 +735,56 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     seng_capacity_state_change();
   }
 
-/* battery.charge_level.capacity_state = 'ok'  (string)
-   battery.charge_level.last_full = 0  (0x0)  (int)
-    = 53  (0x35)  (int)
-   battery.remaining_time = 7200  (0x1c20)  (int)
-   battery.remaining_time.calculate_per_time = false  (bool)
-   battery.reporting.last_full = 0  (0x0)  (int)
-*/
+  if (!calibrated && capacity_state == EMPTY && battery_info->power_supply_capacity > 5)
+    battery_info->power_supply_capacity = 5;
+
+  CHECK_INT(power_supply_capacity,
+        libhal_changeset_set_property_int (cs, "battery.charge_level.percentage", battery_info->power_supply_capacity));
+
+  if (!calibrated)
+    battery_info->power_supply_charge_now = battery_info->power_supply_capacity*1272/100;
+
+  CHECK_INT(power_supply_charge_now,
+        libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
+
+  charge_level_current = battery_info->power_supply_charge_now/159; /* 1272/8 = 159 */
+  if(global_bme.charge_level.current != charge_level_current)
+  {
+    global_bme.charge_level.current = charge_level_current;
+    libhal_changeset_set_property_int (cs, "battery.charge_level.current",charge_level_current);
+    send_battery_state_changed(charge_level_current);
+  }
+
+  if (calibrated)
+  {
+    if (battery_info->power_supply_status == CHARGING)
+    {
+      CHECK_INT(power_supply_time_to_full_now,
+            libhal_changeset_set_property_int (cs, "battery.remaining_time", battery_info->power_supply_time_to_full_now));
+    }
+    else
+    {
+      CHECK_INT(power_supply_time_to_empty_avg,
+            libhal_changeset_set_property_int (cs, "battery.remaining_time", battery_info->power_supply_time_to_empty_avg));
+    }
+  }
+
+  if (strstr(battery_info->power_supply_mode, "host"))
+  {
+    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "connected");
+    libhal_changeset_set_property_string(cs, "maemo.charger.type", "host 500 mA");
+  }
+  else if (strstr(battery_info->power_supply_mode, "dedicated"))
+  {
+    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "connected");
+    libhal_changeset_set_property_string(cs, "maemo.charger.type", "wall charger");
+  }
+  else
+  {
+    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "disconnected");
+    libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
+  }
+
 out:
   dbus_error_init (&error);
 
@@ -636,7 +801,10 @@ out:
 static gboolean poll_uevent(gpointer data)
 {
   bq27200 battery_info={0,};
+  battery_info.power_supply_capacity = -1;
   hald_addon_bme_get_uevent_data(&battery_info);
+  hald_addon_bme_get_registers_data(&battery_info);
+  hald_addon_bme_get_mode_data(&battery_info);
   hald_addon_bme_update_hal(&battery_info,TRUE);
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
