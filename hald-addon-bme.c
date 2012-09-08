@@ -55,7 +55,7 @@ typedef struct {
   char   power_supply_technology[32];
   uint32 power_supply_charge_full;
   uint32 power_supply_charge_now;
-  uint32 power_supply_flags_register;
+  int32  power_supply_flags_register;
   char   power_supply_capacity_level[32];
   char   power_supply_mode[32];
 } bq27200;
@@ -361,7 +361,7 @@ static gboolean hald_addon_bme_get_registers_data(bq27200 * battery_info)
       *tmp=0;
       tmp++;
       tmp[strlen(tmp)-1] = 0;
-      if(!strcmp(line,"0x0A"))
+      if(!strcmp(line,"0x0a"))
         battery_info->power_supply_flags_register = atoi(tmp);
     }
   }
@@ -694,7 +694,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   }
   /* registers is in maemo kernel-power */
   /* code taken from upstream kernel */
-  else if (battery_info->power_supply_flags_register)
+  else if (battery_info->power_supply_flags_register >= 0)
   {
     if (battery_info->power_supply_flags_register & 0x20) /* FLAG_FC */
       capacity_state = FULL;
@@ -729,7 +729,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     send_capacity_state_change();
   }
 
-  if (capacity_state == FULL)
+  if (capacity_state == FULL && charger_connected)
     libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", "full");
   else
     libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", charger_connected ? "on" : "off");
@@ -827,6 +827,7 @@ static gboolean poll_uevent(gpointer data)
   unsigned int pattern;
   bq27200 battery_info={0,};
   battery_info.power_supply_capacity = -1;
+  battery_info.power_supply_flags_register = -1;
   strcpy(battery_info.power_supply_mode, global_battery.power_supply_mode);
 
   log_print("poll_uevent");
