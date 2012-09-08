@@ -365,23 +365,21 @@ static gboolean hald_addon_bme_get_registers_data(bq27200 * battery_info)
   return TRUE;
 }
 
-static gboolean hald_addon_bme_status_info()
+static void hald_addon_bme_status_info()
 {
   log_print("%s\n",__func__);
   send_dbus_signal_(global_charger_connected ? "charger_connected" : "charger_disconnected");
   send_dbus_signal_(global_charging ? "charger_charging_on" : "charger_charging_off");
   send_battery_state_changed(global_bme.charge_level.current);
-  return TRUE;
 }
 
-static gboolean hald_addon_bme_timeleft_info()
+static void hald_addon_bme_timeleft_info()
 {
   log_print("%s\n",__func__);
   send_dbus_signal("battery_timeleft",
       DBUS_TYPE_UINT32, &global_battery.power_supply_time_to_empty_avg,
       DBUS_TYPE_UINT32, &global_battery.power_supply_time_to_full_now,
       DBUS_TYPE_INVALID);
-  return TRUE;
 }
 
 static DBusHandlerResult hald_addon_bme_dbus_proxy(DBusConnection *connection, DBusMessage *message, void *user_data)
@@ -416,9 +414,7 @@ static DBusHandlerResult hald_addon_bme_dbus_proxy(DBusConnection *connection, D
       return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     log_print("got: BME_TIMELEFT_INFO_REQ\n");
-
-    if(hald_addon_bme_timeleft_info())
-      log_print("unable to send timeleft info req to BME\n");
+    hald_addon_bme_timeleft_info();
   }
 
   if(type == DBUS_MESSAGE_TYPE_METHOD_CALL)
