@@ -136,7 +136,7 @@ LibHalContext *hal_ctx = 0;
 const char *udi = 0;
 GMainLoop *mainloop = 0;
 gboolean display_status_ind=FALSE;
-guint poll_period = 6;
+guint poll_period = 30;
 
 static void cleanup_system_dbus()
 {
@@ -357,23 +357,6 @@ static gboolean hald_addon_bme_get_registers_data(bq27200 * battery_info)
         battery_info->power_supply_flags_register = atoi(tmp);
     }
   }
-  fclose(fp);
-
-  return TRUE;
-}
-
-
-static gboolean hald_addon_bme_get_mode_data(bq27200 * battery_info)
-{
-  FILE * fp;
-
-  char line[256];
-  if((fp = fopen(MODE_FILE_PATH,"r")) == NULL)
-  {
-    log_print("unable to open %s(%s)\n",MODE_FILE_PATH,strerror(errno));
-    return FALSE;
-  }
-  fgets(battery_info->power_supply_mode,sizeof(battery_info->power_supply_mode),fp);
   fclose(fp);
 
   return TRUE;
@@ -601,11 +584,17 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   uint32 charge_level_current;
   uint32 capacity_state;
   int calibrated;
+  int charging;
 
   if(battery_info->power_supply_capacity < 0)
     calibrated = 0;
   else
     calibrated = 1;
+
+  if ((strstr(battery_info->power_supply_mode, "host") || strstr(battery_info->power_supply_mode, "dedicated")) && battery_info->power_supply_status == CHARGING)
+    charging = 1;
+  else
+    charging = 0;
 
   cs = libhal_device_new_changeset (udi);
   if (cs == NULL)
@@ -656,8 +645,8 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
         libhal_changeset_set_property_int (cs, "battery.voltage.current", battery_info->power_supply_voltage_now));
 
   CHECK_INT(power_supply_status,
-        libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", battery_info->power_supply_status == CHARGING ? "on" : "off");
-        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", battery_info->power_supply_status == CHARGING);
+        libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", charging ? "on" : "off");
+        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charging);
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == DISCHARGING));
 
   if(!calibrated)
@@ -802,14 +791,99 @@ static gboolean poll_uevent(gpointer data)
 {
   bq27200 battery_info={0,};
   battery_info.power_supply_capacity = -1;
+  strcpy(battery_info.power_supply_mode, global_battery.power_supply_mode);
+
+  log_print("poll_uevent");
+
   hald_addon_bme_get_uevent_data(&battery_info);
   hald_addon_bme_get_registers_data(&battery_info);
-  hald_addon_bme_get_mode_data(&battery_info);
   hald_addon_bme_update_hal(&battery_info,TRUE);
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
 
+  if (data) return FALSE;
+
   return TRUE;
+}
+
+static gboolean hald_addon_bme_mode_cb(GIOChannel *source, GIOCondition condition, gpointer data)
+{
+  GIOStatus ret;
+  gchar *line = NULL;
+  gsize len;
+  GError *gerror = NULL;
+
+  log_print("hald_addon_bme_mode_cb");
+
+  if (condition & G_IO_IN || condition & G_IO_PRI)
+  {
+    ret = g_io_channel_read_line(source, &line, &len, NULL, &gerror);
+    g_io_channel_seek_position(source, 0, G_SEEK_SET, &gerror);
+    if (line)
+    {
+      strncpy(global_battery.power_supply_mode, line, sizeof(global_battery.power_supply_mode)-1);
+      g_free(line);
+      poll_uevent(NULL);
+      g_timeout_add_seconds(1,poll_uevent,(gpointer)1);
+      g_timeout_add_seconds(2,poll_uevent,(gpointer)1);
+      g_timeout_add_seconds(4,poll_uevent,(gpointer)1);
+    }
+  }
+  else if (condition & G_IO_ERR)
+  {
+    log_print("Error");
+    g_io_channel_unref(source);
+    return FALSE;
+  }
+  else
+  {
+    log_print("unknown GIOCondition: %d", condition);
+    g_io_channel_unref(source);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+static gint hald_addon_bme_mode_setup_poll(void)
+{
+  GIOChannel *gioch;
+  GError *error = NULL;
+  gsize len;
+  gchar *line = NULL;
+  GIOStatus ret;
+
+  gioch = g_io_channel_new_file(MODE_FILE_PATH, "r", &error);
+  if (gioch == NULL)
+  {
+    log_print("g_io_channel_new_file() for %s failed: %s", MODE_FILE_PATH, error->message);
+    g_error_free(error);
+    return -1;
+  }
+
+  ret = g_io_channel_read_line(gioch, &line, &len, NULL, &error);
+  if (line) {
+    strncpy(global_battery.power_supply_mode, line, sizeof(global_battery.power_supply_mode)-1);
+    g_free(line);
+  }
+
+  /* Have to read the contents even though it's not used */
+  ret = g_io_channel_read_to_end(gioch, &line, &len, &error);
+  if (ret == G_IO_STATUS_NORMAL)
+    g_free(line);
+
+  if (error != NULL) {
+    log_print("g_io_channel_read_to_end(): %s", error->message);
+    g_error_free (error);
+  }
+
+  g_io_channel_seek_position(gioch, 0, G_SEEK_SET, &error);
+  if (error != NULL){
+    log_print("g_io_channel_seek_position(): %s", error->message);
+    g_error_free (error);
+  }
+
+  return g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_mode_cb, NULL);
 }
 
 int main (int argc, char **argv)
@@ -823,7 +897,7 @@ int main (int argc, char **argv)
   if(bq27200_poll_period)
     poll_period =  atoi(bq27200_poll_period);
   if(!poll_period)
-    poll_period = 1;
+    poll_period = 30;
 
   if(!hald_addon_bme_setup_hal())
   {
@@ -843,11 +917,18 @@ int main (int argc, char **argv)
     goto out;
   }
 
+  if ( hald_addon_bme_mode_setup_poll() == -1 )
+  {
+    log_print("charger mode poll setup failed\n\n");
+    goto out;
+  }
+
   hald_addon_bme_update_hal(&global_battery,FALSE);
+  poll_uevent(NULL);
 
   mainloop = g_main_loop_new(0,FALSE);
   /* add poll callback */
-  g_timeout_add_seconds(poll_period,poll_uevent,0);
+  g_timeout_add_seconds(poll_period,poll_uevent,NULL);
 
   log_print("ENTER MAIN LOOP\n\n");
   g_main_loop_run(mainloop);
