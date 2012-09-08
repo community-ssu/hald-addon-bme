@@ -1,5 +1,5 @@
 Source: hald-addon-bme
-Section: user/other
+Section: devel
 Priority: optional
 Maintainer: Ivaylo Dimitrov <freemangordon@abv.bg>
 Build-Depends: debhelper (>= 5), libglib2.0-dev, libdbus-glib-1-dev, libhal-dev
@@ -7,9 +7,12 @@ Standards-Version: 3.7.2
 
 Package: hald-addon-bme
 Architecture: any
-#Depends: maemo
-Description: hal battery addon for bme 
- Makes battery status information from bme visible via hal. 
+Depends: kernel-feature-battery, kernel-feature-charger, ${shlibs:Depends}, ${misc:Depends}
+Conflicts: bme-dbus-proxy
+Replaces: bme-dbus-proxy
+Provides: bme-dbus-proxy
+Description: hal battery addon for bme
+ Makes battery status information from bme visible via hal.
  .
  Also provides compatibility with previously used bme-dbus-proxy by
  implementing battery and charger messages' forwarding from BME to

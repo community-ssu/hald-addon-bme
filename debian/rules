@@ -27,10 +27,8 @@ endif
 
 configure: configure-stamp
 configure-stamp:
-	test -e ./configure || ./autogen.sh 
 	dh_testdir
 	# Add here commands to configure the package.
-	CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" ./configure --prefix=/usr
 	touch configure-stamp
 
 build: build-stamp
@@ -45,10 +43,8 @@ build-stamp:  configure-stamp
 clean:
 	dh_testdir
 	dh_testroot
-	rm -f build-stamp configure-stamp 
-
-	-./antigen.sh	
-
+	rm -f build-stamp configure-stamp
+	$(MAKE) clean
 	dh_clean
 
 install: build
@@ -57,9 +53,8 @@ install: build
 	dh_clean -k
 	dh_installdirs
 
-    # Add here commands to install the package into debian/$(PACKAGENAME)
+	# Add here commands to install the package into debian/$(PACKAGENAME)
 	$(MAKE) DESTDIR=$(CURDIR)/debian/$(PACKAGENAME) install
-    
 
 # Build architecture-independent files here.
 binary-indep: build install
@@ -69,6 +64,8 @@ binary-indep: build install
 binary-arch: build install
 	dh_testdir
 	dh_testroot
+	dh_installchangelogs
+	dh_installdocs
 	dh_link
 	dh_strip
 	dh_compress
