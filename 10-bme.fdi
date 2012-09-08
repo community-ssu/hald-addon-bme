@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<deviceinfo version="0.2">
+  <!-- XXX: Major hack here, this needs to be spawned from a proper class -->
+  
+  <!--
+  <device>
+    <match key="system.kernel.name" string="Linux">
+      <match key="system.hardware.product" string="RX-44">
+        <spawn udi="/org/freedesktop/Hal/devices/bme"/>
+      </match>
+    </match>
+  </device>
+  -->
+  
+  <device>
+    <match key="system.kernel.name" string="Linux">
+      <spawn udi="/org/freedesktop/Hal/devices/bme"/>
+    </match>
+  </device>
+
+  <device>
+    <match key="info.udi" string="/org/freedesktop/Hal/devices/bme">
+    
+      <!-- from battery.txt -->
+
+      
+      <!-- manual edit -->
+
+      <merge  key="info.product"      type="string">Battery (BME-HAL)</merge>
+      <merge  key="info.category"     type="string">battery</merge>
+      <append key="info.capabilities" type="strlist">battery</append>
+      <append key="info.addons"       type="strlist">hald-addon-bme</append>
+
+    </match>
+  </device>
+
+</deviceinfo>
