@@ -71,6 +71,9 @@ typedef struct {
 
 bme global_bme={{0,}};
 
+int global_charging = 0;
+int global_charger_connected = 0;
+
 #define DEBUG
 #define DEBUG_FILE      "/tmp/hald-addon-bme.log"
 
@@ -259,7 +262,7 @@ static gboolean send_dbus_signal_(const char *name)
   return send_dbus_signal(name, DBUS_TYPE_INVALID);
 }
 
-static gboolean seng_capacity_state_change()
+static gboolean send_capacity_state_change()
 {
   const char * name ;
   switch(global_bme.charge_level.capacity_state)
@@ -364,15 +367,20 @@ static gboolean hald_addon_bme_get_registers_data(bq27200 * battery_info)
 
 static gboolean hald_addon_bme_status_info()
 {
-  /*TODO*/
   log_print("%s\n",__func__);
+  send_dbus_signal_(global_charger_connected ? "charger_connected" : "charger_disconnected");
+  send_dbus_signal_(global_charging ? "charger_charging_on" : "charger_charging_off");
+  send_battery_state_changed(global_bme.charge_level.current);
   return TRUE;
 }
 
 static gboolean hald_addon_bme_timeleft_info()
 {
-  /* TODO */
   log_print("%s\n",__func__);
+  send_dbus_signal("battery_timeleft",
+      DBUS_TYPE_UINT32, &global_battery.power_supply_time_to_empty_avg,
+      DBUS_TYPE_UINT32, &global_battery.power_supply_time_to_full_now,
+      DBUS_TYPE_INVALID);
   return TRUE;
 }
 
@@ -584,6 +592,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   uint32 charge_level_current;
   uint32 capacity_state;
   int calibrated;
+  int charger_connected;
   int charging;
 
   if(battery_info->power_supply_capacity < 0)
@@ -591,7 +600,12 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   else
     calibrated = 1;
 
-  if ((strstr(battery_info->power_supply_mode, "host") || strstr(battery_info->power_supply_mode, "dedicated")) && battery_info->power_supply_status == CHARGING)
+  if (strstr(battery_info->power_supply_mode, "host") || strstr(battery_info->power_supply_mode, "dedicated"))
+    charger_connected = 1;
+  else
+    charger_connected = 0;
+
+  if (charger_connected && battery_info->power_supply_status == CHARGING)
     charging = 1;
   else
     charging = 0;
@@ -648,6 +662,12 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
         libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", charging ? "on" : "off");
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charging);
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == DISCHARGING));
+
+  if (global_charging != charging)
+  {
+    send_dbus_signal_(charging ? "charger_charging_on" : "charger_charging_off");
+    global_charging = charging;
+  }
 
   if(!calibrated)
   {
@@ -721,7 +741,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   {
     global_bme.charge_level.capacity_state = capacity_state;
     libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", get_capacity_state_string());
-    seng_capacity_state_change();
+    send_capacity_state_change();
   }
 
   if (!calibrated && capacity_state == EMPTY && battery_info->power_supply_capacity > 5)
@@ -772,6 +792,12 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   {
     libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "disconnected");
     libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
+  }
+
+  if (global_charger_connected != charger_connected)
+  {
+    send_dbus_signal_(charger_connected ? "charger_connected" : "charger_disconnected");
+    global_charger_connected = charger_connected;
   }
 
 out:
