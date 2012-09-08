@@ -44,7 +44,7 @@ typedef int32_t int32;
 typedef struct {
 /*  power_supply_name=bq27200-0
   power_supply_type=battery*/
-  enum{CHARGING,DISCHARGING}power_supply_status;
+  enum{STATUS_FULL,STATUS_CHARGING,STATUS_DISCHARGING}power_supply_status;
   uint32 power_supply_present;
   uint32 power_supply_voltage_now;
   int32  power_supply_current_now;
@@ -311,7 +311,11 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
       if(!strcmp(line,"POWER_SUPPLY_CAPACITY"))
         battery_info->power_supply_capacity = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_STATUS"))
-        battery_info->power_supply_status  = (!strcmp(tmp,"Discharging"))?DISCHARGING:CHARGING;
+      {
+        if (!strcmp(tmp,"Full")) battery_info->power_supply_status = STATUS_FULL;
+        else if (!strcmp(tmp,"Charging")) battery_info->power_supply_status = STATUS_CHARGING;
+        else battery_info->power_supply_status = STATUS_DISCHARGING;
+      }
       else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
         battery_info->power_supply_voltage_now = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_CURRENT_NOW"))
@@ -652,7 +656,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
 
   CHECK_INT(power_supply_status,
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charger_connected);
-        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == DISCHARGING));
+        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == STATUS_DISCHARGING));
 
   if(!calibrated)
   {
@@ -722,6 +726,9 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
       capacity_state = OK;
   }
 
+  if (battery_info->power_supply_status == STATUS_FULL)
+    capacity_state = FULL;
+
   if(global_bme.charge_level.capacity_state != capacity_state)
   {
     global_bme.charge_level.capacity_state = capacity_state;
@@ -763,12 +770,12 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
 
   if (calibrated)
   {
-    if (battery_info->power_supply_status == CHARGING)
+    if (battery_info->power_supply_status == STATUS_CHARGING)
     {
       CHECK_INT(power_supply_time_to_full_now,
             libhal_changeset_set_property_int (cs, "battery.remaining_time", battery_info->power_supply_time_to_full_now));
     }
-    else
+    else if (battery_info->power_supply_status == STATUS_DISCHARGING)
     {
       CHECK_INT(power_supply_time_to_empty_avg,
             libhal_changeset_set_property_int (cs, "battery.remaining_time", battery_info->power_supply_time_to_empty_avg));
@@ -794,7 +801,8 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   if (global_charger_connected != charger_connected)
   {
     send_dbus_signal_(charger_connected ? "charger_connected" : "charger_disconnected");
-    send_dbus_signal_(charger_connected ? "charger_charging_on" : "charger_charging_off");
+    if (capacity_state != FULL)
+      send_dbus_signal_(charger_connected ? "charger_charging_on" : "charger_charging_off");
     global_charger_connected = charger_connected;
   }
 
