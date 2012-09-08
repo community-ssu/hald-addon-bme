@@ -736,7 +736,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   CHECK_INT(power_supply_charge_now,
         libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
 
-  charge_level_current = battery_info->power_supply_charge_now/159; /* 1272/8 = 159 */
+  charge_level_current = (6.25+battery_info->power_supply_capacity)*8/100;
   if(global_bme.charge_level.current != charge_level_current)
   {
     global_bme.charge_level.current = charge_level_current;
