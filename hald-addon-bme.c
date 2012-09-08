@@ -60,7 +60,7 @@ typedef struct {
   char   power_supply_mode[32];
 } bq27200;
 
-bq27200 global_battery={0,};
+bq27200 global_battery;
 
 #define POWER_SUPPLY_CAPACITY_THRESHOLD_FULL 95
 #define POWER_SUPPLY_CAPACITY_THRESHOLD_LOW 15
@@ -74,7 +74,7 @@ typedef struct {
   }charge_level;
 }bme;
 
-bme global_bme={{0,}};
+bme global_bme;
 
 int global_charger_connected = 0;
 
@@ -397,7 +397,7 @@ static void hald_addon_bme_timeleft_info()
       DBUS_TYPE_INVALID);
 }
 
-static DBusHandlerResult hald_addon_bme_dbus_proxy(DBusConnection *connection, DBusMessage *message, void *user_data)
+static DBusHandlerResult hald_addon_bme_dbus_proxy(DBusConnection *connection, DBusMessage *message, void *user_data G_GNUC_UNUSED)
 {
   const char *interface, *member, *path;
   int type;
@@ -497,7 +497,7 @@ out:
 }
 
 
-static DBusHandlerResult hald_addon_bme_mce_signal(DBusConnection *connection, DBusMessage *message, void *user_data)
+static DBusHandlerResult hald_addon_bme_mce_signal(DBusConnection *connection G_GNUC_UNUSED, DBusMessage *message, void *user_data G_GNUC_UNUSED)
 {
   const char *interface, *member, *path;
   int type;
@@ -806,7 +806,6 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     global_charger_connected = charger_connected;
   }
 
-out:
   dbus_error_init (&error);
 
   libhal_device_commit_changeset (hal_ctx, cs, &error);
@@ -833,7 +832,8 @@ static const char * get_pattern_name(unsigned int pattern)
 static gboolean poll_uevent(gpointer data)
 {
   unsigned int pattern;
-  bq27200 battery_info={0,};
+  bq27200 battery_info;
+  memset(&battery_info, 0, sizeof(battery_info));
   battery_info.power_supply_capacity = -1;
   battery_info.power_supply_flags_register = -1;
   strcpy(battery_info.power_supply_mode, global_battery.power_supply_mode);
@@ -900,7 +900,7 @@ static gboolean poll_uevent(gpointer data)
   return TRUE;
 }
 
-static gboolean hald_addon_bme_mode_cb(GIOChannel *source, GIOCondition condition, gpointer data)
+static gboolean hald_addon_bme_mode_cb(GIOChannel *source, GIOCondition condition, gpointer data G_GNUC_UNUSED)
 {
   GIOStatus ret;
   gchar *line = NULL;
@@ -997,7 +997,7 @@ static int hald_addon_bme_disable_stat_pin(void)
     return 0;
 }
 
-int main (int argc, char **argv)
+int main ()
 {
   int result = 1;
   const char * bq27200_poll_period = getenv ("HAL_PROP_BQ27200_POLL_PERIOD_SECONDS");
