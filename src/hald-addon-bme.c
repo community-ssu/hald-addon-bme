@@ -812,7 +812,7 @@ out:
   return TRUE;
 }
 
-static const char * get_pattern_name(int pattern)
+static const char * get_pattern_name(unsigned int pattern)
 {
   switch(pattern)
   {
@@ -853,14 +853,15 @@ static gboolean poll_uevent(gpointer data)
       const char * name;
 
       if (global_pattern != PATTERN_NONE &&
-          (name = get_pattern_name(global_pattern)))
+          (name = get_pattern_name(global_pattern)) != NULL)
       {
         msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", "req_led_pattern_deactivate");
         if (msg &&
-            dbus_message_append_args(msg, DBUS_TYPE_STRING, name, DBUS_TYPE_INVALID) &&
+            dbus_message_append_args(msg, DBUS_TYPE_STRING, &name, DBUS_TYPE_INVALID) &&
             dbus_connection_send(system_dbus, msg, 0))
         {
           dbus_connection_flush(system_dbus);
+          log_print("deactivated mce led pattern: %s\n", name);
           global_pattern = PATTERN_NONE;
         }
 
@@ -869,14 +870,15 @@ static gboolean poll_uevent(gpointer data)
       }
 
       if (global_pattern == PATTERN_NONE &&
-          (name = get_pattern_name(pattern)))
+          (name = get_pattern_name(pattern)) != NULL)
       {
         msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", "req_led_pattern_activate");
         if (msg &&
-            dbus_message_append_args(msg, DBUS_TYPE_STRING, name, DBUS_TYPE_INVALID) &&
+            dbus_message_append_args(msg, DBUS_TYPE_STRING, &name, DBUS_TYPE_INVALID) &&
             dbus_connection_send(system_dbus, msg, 0))
         {
           dbus_connection_flush(system_dbus);
+          log_print("activated mce led pattern: %s\n", name);
           global_pattern = pattern;
         }
 
@@ -1031,11 +1033,11 @@ int main (int argc, char **argv)
   }
 
   hald_addon_bme_update_hal(&global_battery,FALSE);
-  poll_uevent(NULL);
 
   mainloop = g_main_loop_new(0,FALSE);
   /* add poll callback */
   g_timeout_add_seconds(poll_period,poll_uevent,NULL);
+  g_timeout_add_seconds(0,poll_uevent,(gpointer)1);
 
   log_print("ENTER MAIN LOOP\n\n");
   g_main_loop_run(mainloop);
