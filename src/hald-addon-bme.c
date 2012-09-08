@@ -612,7 +612,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     libhal_changeset_set_property_int(cs, "battery.charge_level.current", 0);
     /* is charge_level.design really 8? */
     libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8); /* STATIC */
-    libhal_changeset_set_property_int(cs, "battery.charge_level.last_full", 0); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.charge_level.last_full", 0);
     libhal_changeset_set_property_int(cs, "battery.charge_level.percentage", 0);
     libhal_changeset_set_property_string(cs, "battery.charge_level.unit", "bars"); /* STATIC */
     libhal_changeset_set_property_bool(cs, "battery.is_rechargeable", TRUE); /* STATIC */
@@ -624,7 +624,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     libhal_changeset_set_property_int(cs, "battery.reporting.current", 0);
     /* no way how to read battery design current, maybe twl-madc bsi channel... */
     libhal_changeset_set_property_int(cs, "battery.reporting.design", 1272); /* STATIC */
-    libhal_changeset_set_property_int(cs, "battery.reporting.last_full", 0); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.reporting.last_full", 0);
     libhal_changeset_set_property_string(cs, "battery.reporting.unit", "mAh"); /* STATIC */
     libhal_changeset_set_property_string(cs, "battery.type","pda"); /* STATIC */
     libhal_changeset_set_property_int(cs, "battery.voltage.current", 0);
@@ -735,6 +735,13 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
 
   CHECK_INT(power_supply_charge_now,
         libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
+
+  if (calibrated)
+  {
+    CHECK_INT(power_supply_charge_now,
+          libhal_changeset_set_property_int (cs, "battery.charge_level.last_full", battery_info->power_supply_charge_full/150);
+          libhal_changeset_set_property_int (cs, "battery.reporting.last_full", battery_info->power_supply_charge_full));
+  }
 
   charge_level_current = (6.25+battery_info->power_supply_capacity)*8/100;
   if(global_bme.charge_level.current != charge_level_current)
