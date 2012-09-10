@@ -939,7 +939,24 @@ static gboolean hald_addon_bme_mode_cb(GIOChannel *source, GIOCondition conditio
   return TRUE;
 }
 
-static gint hald_addon_bme_mode_setup_poll(void)
+static int hald_addon_bme_disable_stat_pin(void)
+{
+  FILE * fp;
+  int ret;
+  if((fp = fopen(STAT_PIN_FILE_PATH,"w")) == NULL)
+  {
+    log_print("unable to open %s(%s)\n",STAT_PIN_FILE_PATH,strerror(errno));
+    return -1;
+  }
+  ret = fputs("0", fp);
+  fclose(fp);
+  if (ret < 0)
+    return -1;
+  else
+    return 0;
+}
+
+static gboolean hald_addon_bme_mode_setup_poll(gpointer data G_GNUC_UNUSED)
 {
   GIOChannel *gioch;
   GError *error = NULL;
@@ -952,7 +969,8 @@ static gint hald_addon_bme_mode_setup_poll(void)
   {
     log_print("g_io_channel_new_file() for %s failed: %s", MODE_FILE_PATH, error->message);
     g_error_free(error);
-    return -1;
+    g_timeout_add_seconds(60,hald_addon_bme_mode_setup_poll,NULL);
+    return FALSE;
   }
 
   ret = g_io_channel_read_line(gioch, &line, &len, NULL, &error);
@@ -977,24 +995,14 @@ static gint hald_addon_bme_mode_setup_poll(void)
     g_error_free (error);
   }
 
-  return g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_mode_cb, NULL);
-}
-
-static int hald_addon_bme_disable_stat_pin(void)
-{
-  FILE * fp;
-  int ret;
-  if((fp = fopen(STAT_PIN_FILE_PATH,"w")) == NULL)
+  if ( g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_mode_cb, NULL) == 0 )
   {
-    log_print("unable to open %s(%s)\n",STAT_PIN_FILE_PATH,strerror(errno));
-    return -1;
+    g_timeout_add_seconds(60,hald_addon_bme_mode_setup_poll,NULL);
+    return FALSE;
   }
-  ret = fputs("0", fp);
-  fclose(fp);
-  if (ret < 0)
-    return -1;
-  else
-    return 0;
+
+  hald_addon_bme_disable_stat_pin();
+  return FALSE;
 }
 
 int main ()
@@ -1028,18 +1036,7 @@ int main ()
     goto out;
   }
 
-  if ( hald_addon_bme_mode_setup_poll() == -1 )
-  {
-    log_print("charger mode poll setup failed\n\n");
-    goto out;
-  }
-
-  if ( hald_addon_bme_disable_stat_pin() == -1 )
-  {
-    log_print("disabling stat pin failed\n\n");
-    goto out;
-  }
-
+  hald_addon_bme_mode_setup_poll(NULL);
   hald_addon_bme_update_hal(&global_battery,FALSE);
 
   mainloop = g_main_loop_new(0,FALSE);
