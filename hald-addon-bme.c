@@ -46,21 +46,21 @@ typedef struct {
   power_supply_type=battery*/
   enum{STATUS_FULL,STATUS_CHARGING,STATUS_DISCHARGING}power_supply_status;
   uint32 power_supply_present;
+  uint32 power_supply_voltage_design;
   uint32 power_supply_voltage_now;
   int32  power_supply_current_now;
   int32  power_supply_capacity;
-  uint32 power_supply_temp;
   uint32 power_supply_time_to_empty_avg;
   uint32 power_supply_time_to_full_now;
-  char   power_supply_technology[32];
+  uint32 power_supply_charge_design;
   uint32 power_supply_charge_full;
   uint32 power_supply_charge_now;
   int32  power_supply_flags_register;
   char   power_supply_capacity_level[32];
   char   power_supply_mode[32];
-} bq27200;
+} battery;
 
-bq27200 global_battery;
+battery global_battery;
 
 #define POWER_SUPPLY_CAPACITY_THRESHOLD_FULL 95
 #define POWER_SUPPLY_CAPACITY_THRESHOLD_LOW 15
@@ -83,10 +83,11 @@ enum { PATTERN_NONE, PATTERN_FULL, PATTERN_CHARGING, PATTERN_BOOST } global_patt
 #define DEBUG
 #define DEBUG_FILE      "/tmp/hald-addon-bme.log"
 
-#define UEVENT_FILE_PATH "/sys/class/power_supply/bq27200-0/uevent"
-#define REGISTERS_FILE_PATH "/sys/class/power_supply/bq27200-0/registers"
-#define MODE_FILE_PATH "/sys/class/power_supply/bq24150a-0/mode"
-#define STAT_PIN_FILE_PATH "/sys/class/power_supply/bq24150a-0/stat_pin_enable"
+#define BQ27200_UEVENT_FILE_PATH "/sys/class/power_supply/bq27200-0/uevent"
+#define BQ27200_REGISTERS_FILE_PATH "/sys/class/power_supply/bq27200-0/registers"
+#define BQ24150A_MODE_FILE_PATH "/sys/class/power_supply/bq24150a-0/mode"
+#define BQ24150A_STAT_PIN_FILE_PATH "/sys/class/power_supply/bq24150a-0/stat_pin_enable"
+#define RX51_UEVENT_FILE_PATH "/sys/class/power_supply/rx51-battery/uevent"
 
 /*
 Standard entries:
@@ -289,14 +290,46 @@ static gboolean send_battery_state_changed(uint32 now)
   return send_dbus_signal("battery_state_changed",DBUS_TYPE_UINT32, &now, DBUS_TYPE_UINT32, &max, DBUS_TYPE_INVALID);
 }
 
-static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
+static gboolean hald_addon_bme_get_rx51_data(battery * battery_info)
 {
   FILE * fp;
 
   char line[256];
-  if((fp = fopen(UEVENT_FILE_PATH,"r")) == NULL)
+  if((fp = fopen(RX51_UEVENT_FILE_PATH,"r")) == NULL)
   {
-    log_print("unable to open %s(%s)\n",UEVENT_FILE_PATH,strerror(errno));
+    log_print("unable to open %s(%s)\n",RX51_UEVENT_FILE_PATH,strerror(errno));
+    return FALSE;
+  }
+  while(fgets(line,sizeof(line),fp))
+  {
+    char*tmp;
+    tmp = strchr(line,'=');
+    if(tmp)
+    {
+      *tmp=0;
+      tmp++;
+      tmp[strlen(tmp)-1] = 0;
+      if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_MAX_DESIGN"))
+        battery_info->power_supply_voltage_design = atoi(tmp)/1000;
+      else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
+        battery_info->power_supply_voltage_now = atoi(tmp)/1000;
+      else if(!strcmp(line,"POWER_SUPPLY_CHARGE_FULL_DESIGN"))
+        battery_info->power_supply_charge_design = atoi(tmp)/1000;
+    }
+  }
+  fclose(fp);
+
+  return TRUE;
+}
+
+static gboolean hald_addon_bme_get_bq27200_data(battery * battery_info)
+{
+  FILE * fp;
+
+  char line[256];
+  if((fp = fopen(BQ27200_UEVENT_FILE_PATH,"r")) == NULL)
+  {
+    log_print("unable to open %s(%s)\n",BQ27200_UEVENT_FILE_PATH,strerror(errno));
     return FALSE;
   }
   while(fgets(line,sizeof(line),fp))
@@ -320,16 +353,10 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
         battery_info->power_supply_voltage_now = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_CURRENT_NOW"))
         battery_info->power_supply_current_now = atoi(tmp);
-      else if(!strcmp(line,"POWER_SUPPLY_TEMP"))
-        battery_info->power_supply_temp = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_FULL_NOW"))
         battery_info->power_supply_time_to_full_now = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_EMPTY_AVG"))
         battery_info->power_supply_time_to_empty_avg = atoi(tmp);
-      else if(!strcmp(line,"POWER_SUPPLY_TECHNOLOGY"))
-        strncpy(battery_info->power_supply_technology,
-                tmp,
-                sizeof(battery_info->power_supply_technology)-1);
       else if(!strcmp(line,"POWER_SUPPLY_CHARGE_FULL"))
         battery_info->power_supply_charge_full = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_CHARGE_NOW"))
@@ -338,7 +365,6 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
         strncpy(battery_info->power_supply_capacity_level,
                 tmp,
                 sizeof(battery_info->power_supply_capacity_level)-1);
-      /* Nokia did not configured POWER_SUPPLY_CHARGE_FULL_DESIGN, so ignore it */
     }
   }
   fclose(fp);
@@ -346,14 +372,14 @@ static gboolean hald_addon_bme_get_uevent_data(bq27200 * battery_info)
   return TRUE;
 }
 
-static gboolean hald_addon_bme_get_registers_data(bq27200 * battery_info)
+static gboolean hald_addon_bme_get_bq27200_registers(battery * battery_info)
 {
   FILE * fp;
 
   char line[256];
-  if((fp = fopen(REGISTERS_FILE_PATH,"r")) == NULL)
+  if((fp = fopen(BQ27200_REGISTERS_FILE_PATH,"r")) == NULL)
   {
-    log_print("unable to open %s(%s)\n",REGISTERS_FILE_PATH,strerror(errno));
+    log_print("unable to open %s(%s)\n",BQ27200_REGISTERS_FILE_PATH,strerror(errno));
     return FALSE;
   }
   while(fgets(line,sizeof(line),fp))
@@ -592,7 +618,7 @@ static const char * get_capacity_state_string()
   }
 }
 
-static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_for_changes)
+static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_for_changes)
 {
 #define CHECK_INT(f,fun) if( !check_for_changes || (global_battery.f != battery_info->f)) \
   log_print(#f " changed,updating to %d",battery_info->f);fun
@@ -624,8 +650,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   {
     libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "ok");
     libhal_changeset_set_property_int(cs, "battery.charge_level.current", 0);
-    /* is charge_level.design really 8? */
-    libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8);
     libhal_changeset_set_property_int(cs, "battery.charge_level.last_full", 0);
     libhal_changeset_set_property_int(cs, "battery.charge_level.percentage", 0);
     libhal_changeset_set_property_string(cs, "battery.charge_level.unit", "bars"); /* STATIC */
@@ -636,14 +661,12 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
     libhal_changeset_set_property_int(cs, "battery.remaining_time", 0);
     libhal_changeset_set_property_bool(cs, "battery.remaining_time.calculate_per_time", FALSE); /* STATIC */
     libhal_changeset_set_property_int(cs, "battery.reporting.current", 0);
-    /* no way how to read battery design current, maybe twl-madc bsi channel... */
-    libhal_changeset_set_property_int(cs, "battery.reporting.design", 1272); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.reporting.design", 1272);
     libhal_changeset_set_property_int(cs, "battery.reporting.last_full", 0);
     libhal_changeset_set_property_string(cs, "battery.reporting.unit", "mAh"); /* STATIC */
     libhal_changeset_set_property_string(cs, "battery.type","pda"); /* STATIC */
     libhal_changeset_set_property_int(cs, "battery.voltage.current", 0);
-    /* is voltage design really 4200 ? */
-    libhal_changeset_set_property_int(cs, "battery.voltage.design", 4200); /* STATIC */
+    libhal_changeset_set_property_int(cs, "battery.voltage.design", 4200);
     libhal_changeset_set_property_string(cs, "battery.voltage.unit", "mV"); /* STATIC */
     libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "disconnected");
     libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
@@ -654,9 +677,16 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
   CHECK_INT(power_supply_voltage_now,
         libhal_changeset_set_property_int (cs, "battery.voltage.current", battery_info->power_supply_voltage_now));
 
+  CHECK_INT(power_supply_voltage_design,
+        libhal_changeset_set_property_int (cs, "battery.voltage.design", battery_info->power_supply_voltage_design));
+
   CHECK_INT(power_supply_status,
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charger_connected);
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == STATUS_DISCHARGING));
+
+  CHECK_INT(power_supply_charge_design,
+        libhal_changeset_set_property_int (cs, "battery.charge_level.design", battery_info->power_supply_charge_design/150);
+        libhal_changeset_set_property_int (cs, "battery.reporting.design", battery_info->power_supply_charge_design));
 
   if(!calibrated)
   {
@@ -748,7 +778,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
         libhal_changeset_set_property_int (cs, "battery.charge_level.percentage", battery_info->power_supply_capacity));
 
   if (!calibrated)
-    battery_info->power_supply_charge_now = battery_info->power_supply_capacity*1272/100;
+    battery_info->power_supply_charge_now = battery_info->power_supply_capacity*battery_info->power_supply_charge_design/100;
 
   CHECK_INT(power_supply_charge_now,
         libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
@@ -760,7 +790,7 @@ static gboolean hald_addon_bme_update_hal(bq27200* battery_info,gboolean check_f
           libhal_changeset_set_property_int (cs, "battery.reporting.last_full", battery_info->power_supply_charge_full));
   }
 
-  charge_level_current = (6.25+battery_info->power_supply_capacity)*8/100;
+  charge_level_current = (6.25+battery_info->power_supply_capacity)*(battery_info->power_supply_charge_design/150)/100;
   if(global_bme.charge_level.current != charge_level_current)
   {
     global_bme.charge_level.current = charge_level_current;
@@ -832,7 +862,7 @@ static const char * get_pattern_name(unsigned int pattern)
 static gboolean poll_uevent(gpointer data)
 {
   unsigned int pattern;
-  bq27200 battery_info;
+  battery battery_info;
   memset(&battery_info, 0, sizeof(battery_info));
   battery_info.power_supply_capacity = -1;
   battery_info.power_supply_flags_register = -1;
@@ -840,8 +870,9 @@ static gboolean poll_uevent(gpointer data)
 
   log_print("poll_uevent");
 
-  hald_addon_bme_get_uevent_data(&battery_info);
-  hald_addon_bme_get_registers_data(&battery_info);
+  hald_addon_bme_get_bq27200_data(&battery_info);
+  hald_addon_bme_get_bq27200_registers(&battery_info);
+  hald_addon_bme_get_rx51_data(&battery_info);
   hald_addon_bme_update_hal(&battery_info,TRUE);
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
@@ -900,14 +931,14 @@ static gboolean poll_uevent(gpointer data)
   return TRUE;
 }
 
-static gboolean hald_addon_bme_mode_cb(GIOChannel *source, GIOCondition condition, gpointer data G_GNUC_UNUSED)
+static gboolean hald_addon_bme_bq24150a_cb(GIOChannel *source, GIOCondition condition, gpointer data G_GNUC_UNUSED)
 {
   GIOStatus ret;
   gchar *line = NULL;
   gsize len;
   GError *gerror = NULL;
 
-  log_print("hald_addon_bme_mode_cb");
+  log_print("hald_addon_bme_bq24150a_cb");
 
   if (condition & G_IO_IN || condition & G_IO_PRI)
   {
@@ -943,9 +974,9 @@ static int hald_addon_bme_disable_stat_pin(void)
 {
   FILE * fp;
   int ret;
-  if((fp = fopen(STAT_PIN_FILE_PATH,"w")) == NULL)
+  if((fp = fopen(BQ24150A_STAT_PIN_FILE_PATH,"w")) == NULL)
   {
-    log_print("unable to open %s(%s)\n",STAT_PIN_FILE_PATH,strerror(errno));
+    log_print("unable to open %s(%s)\n",BQ24150A_STAT_PIN_FILE_PATH,strerror(errno));
     return -1;
   }
   ret = fputs("0", fp);
@@ -956,7 +987,7 @@ static int hald_addon_bme_disable_stat_pin(void)
     return 0;
 }
 
-static gboolean hald_addon_bme_mode_setup_poll(gpointer data G_GNUC_UNUSED)
+static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
 {
   GIOChannel *gioch;
   GError *error = NULL;
@@ -964,12 +995,12 @@ static gboolean hald_addon_bme_mode_setup_poll(gpointer data G_GNUC_UNUSED)
   gchar *line = NULL;
   GIOStatus ret;
 
-  gioch = g_io_channel_new_file(MODE_FILE_PATH, "r", &error);
+  gioch = g_io_channel_new_file(BQ24150A_MODE_FILE_PATH, "r", &error);
   if (gioch == NULL)
   {
-    log_print("g_io_channel_new_file() for %s failed: %s", MODE_FILE_PATH, error->message);
+    log_print("g_io_channel_new_file() for %s failed: %s", BQ24150A_MODE_FILE_PATH, error->message);
     g_error_free(error);
-    g_timeout_add_seconds(60,hald_addon_bme_mode_setup_poll,NULL);
+    g_timeout_add_seconds(60,hald_addon_bme_bq24150a_setup_poll,NULL);
     return FALSE;
   }
 
@@ -995,9 +1026,9 @@ static gboolean hald_addon_bme_mode_setup_poll(gpointer data G_GNUC_UNUSED)
     g_error_free (error);
   }
 
-  if ( g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_mode_cb, NULL) == 0 )
+  if ( g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_bq24150a_cb, NULL) == 0 )
   {
-    g_timeout_add_seconds(60,hald_addon_bme_mode_setup_poll,NULL);
+    g_timeout_add_seconds(60,hald_addon_bme_bq24150a_setup_poll,NULL);
     return FALSE;
   }
 
@@ -1036,7 +1067,7 @@ int main ()
     goto out;
   }
 
-  hald_addon_bme_mode_setup_poll(NULL);
+  hald_addon_bme_bq24150a_setup_poll(NULL);
   hald_addon_bme_update_hal(&global_battery,FALSE);
 
   mainloop = g_main_loop_new(0,FALSE);
