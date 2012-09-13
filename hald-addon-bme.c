@@ -19,22 +19,30 @@
  *
  */
 
-#include <math.h>
+#include <ctype.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
+#include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <sys/socket.h>
 #include <sys/un.h>
+
 #include <glib/gmain.h>
-#include <dbus/dbus-glib-lowlevel.h>
-#include <hal/libhal.h>
+
 #include <gio/gio.h>
-#include <ctype.h>
-#include <memory.h>
-#include <stdint.h>
+
+#include <dbus/dbus-glib-lowlevel.h>
+
+#include <hal/libhal.h>
+
+#include <dsme/protocol.h>
+#include <dsme/state.h>
 
 typedef uint8_t uint8;
 typedef uint16_t uint16;
@@ -42,8 +50,6 @@ typedef uint32_t uint32;
 typedef int32_t int32;
 
 typedef struct {
-/*  power_supply_name=bq27200-0
-  power_supply_type=battery*/
   enum{STATUS_FULL,STATUS_CHARGING,STATUS_DISCHARGING}power_supply_status;
   uint32 power_supply_present;
   uint32 power_supply_voltage_design;
@@ -77,6 +83,8 @@ typedef struct {
 bme global_bme;
 
 int global_charger_connected = 0;
+
+dsmesock_connection_t * dsme_conn;
 
 enum { PATTERN_NONE, PATTERN_FULL, PATTERN_CHARGING, PATTERN_BOOST } global_pattern;
 
@@ -279,6 +287,13 @@ static gboolean send_capacity_state_change()
     case FULL:name = "battery_full";break;
     case EMPTY:name = "battery_empty";break;
     default:return TRUE;
+  }
+  if (global_bme.charge_level.capacity_state == EMPTY)
+  {
+    DSM_MSGTYPE_SET_BATTERY_STATE msg =
+      DSME_MSG_INIT(DSM_MSGTYPE_SET_BATTERY_STATE);
+    msg.empty = 1;
+    dsmesock_send(dsme_conn, &msg);
   }
   return send_dbus_signal_(name);
 }
@@ -830,10 +845,14 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
 
   if (global_charger_connected != charger_connected)
   {
+    DSM_MSGTYPE_SET_CHARGER_STATE msg =
+      DSME_MSG_INIT(DSM_MSGTYPE_SET_CHARGER_STATE);
+    global_charger_connected = charger_connected;
     send_dbus_signal_(charger_connected ? "charger_connected" : "charger_disconnected");
     if (capacity_state != FULL)
       send_dbus_signal_(charger_connected ? "charger_charging_on" : "charger_charging_off");
-    global_charger_connected = charger_connected;
+    msg.connected = charger_connected;
+    dsmesock_send(dsme_conn, &msg);
   }
 
   dbus_error_init (&error);
@@ -1064,6 +1083,13 @@ int main ()
   if ( hald_addon_bme_server_dbus_init() == -1 )
   {
     log_print("server setup failed\n\n");
+    goto out;
+  }
+
+  dsme_conn = dsmesock_connect();
+  if (!dsme_conn)
+  {
+    log_print("dsmesock_connect failed\n\n");
     goto out;
   }
 

@@ -2,7 +2,7 @@ Source: hald-addon-bme
 Section: devel
 Priority: optional
 Maintainer: Ivaylo Dimitrov <freemangordon@abv.bg>
-Build-Depends: debhelper (>= 5), libglib2.0-dev, libdbus-glib-1-dev, libhal-dev
+Build-Depends: debhelper (>= 5), libglib2.0-dev, libdbus-glib-1-dev, libhal-dev, libdsme0.2.0-dev
 Standards-Version: 3.7.2
 
 Package: hald-addon-bme
