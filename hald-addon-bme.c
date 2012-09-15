@@ -958,6 +958,8 @@ static gboolean poll_uevent(gpointer data)
   return TRUE;
 }
 
+static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data);
+
 static gboolean hald_addon_bme_bq24150a_cb(GIOChannel *source, GIOCondition condition, gpointer data G_GNUC_UNUSED)
 {
   GIOStatus ret;
@@ -976,25 +978,29 @@ static gboolean hald_addon_bme_bq24150a_cb(GIOChannel *source, GIOCondition cond
       strncpy(global_battery.power_supply_mode, line, sizeof(global_battery.power_supply_mode)-1);
       g_free(line);
       poll_uevent(NULL);
-      g_timeout_add_seconds(1,poll_uevent,(gpointer)1);
-      g_timeout_add_seconds(2,poll_uevent,(gpointer)1);
-      g_timeout_add_seconds(4,poll_uevent,(gpointer)1);
+      return TRUE;
     }
+    log_print("Error");
+    g_io_channel_unref(source);
+    g_timeout_add_seconds(60,hald_addon_bme_bq24150a_setup_poll,NULL);
+    return FALSE;
   }
-  else if (condition & G_IO_ERR)
+  else if (condition & G_IO_ERR || condition & G_IO_HUP || condition & G_IO_NVAL)
   {
     log_print("Error");
     g_io_channel_unref(source);
+    g_timeout_add_seconds(60,hald_addon_bme_bq24150a_setup_poll,NULL);
     return FALSE;
   }
   else
   {
     log_print("unknown GIOCondition: %d", condition);
     g_io_channel_unref(source);
+    g_timeout_add_seconds(60,hald_addon_bme_bq24150a_setup_poll,NULL);
     return FALSE;
   }
 
-  return TRUE;
+  return FALSE;
 }
 
 static int hald_addon_bme_disable_stat_pin(void)
@@ -1006,6 +1012,7 @@ static int hald_addon_bme_disable_stat_pin(void)
     log_print("unable to open %s(%s)\n",BQ24150A_STAT_PIN_FILE_PATH,strerror(errno));
     return -1;
   }
+  log_print("disabling stat pin\n");
   ret = fputs("0", fp);
   fclose(fp);
   if (ret < 0)
@@ -1021,6 +1028,8 @@ static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
   gsize len;
   gchar *line = NULL;
   GIOStatus ret;
+
+  log_print("calling hald_addon_bme_bq24150a_setup_poll\n");
 
   gioch = g_io_channel_new_file(BQ24150A_MODE_FILE_PATH, "r", &error);
   if (gioch == NULL)
@@ -1053,7 +1062,7 @@ static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
     g_error_free (error);
   }
 
-  if ( g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR, hald_addon_bme_bq24150a_cb, NULL) == 0 )
+  if ( g_io_add_watch(gioch, G_IO_IN | G_IO_PRI | G_IO_ERR | G_IO_HUP | G_IO_NVAL, hald_addon_bme_bq24150a_cb, NULL) == 0 )
   {
     g_timeout_add_seconds(60,hald_addon_bme_bq24150a_setup_poll,NULL);
     return FALSE;
