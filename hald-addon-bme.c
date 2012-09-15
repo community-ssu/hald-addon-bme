@@ -774,7 +774,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   if (battery_info->power_supply_status == STATUS_FULL)
     capacity_state = FULL;
 
-  if(global_bme.charge_level.capacity_state != capacity_state)
+  if(check_for_changes && global_bme.charge_level.capacity_state != capacity_state)
   {
     global_bme.charge_level.capacity_state = capacity_state;
     libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", get_capacity_state_string());
