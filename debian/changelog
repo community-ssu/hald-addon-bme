@@ -1,8 +1,8 @@
-hald-addon-bme (1.0) unstable; urgency=low
+hald-addon-bme (1.0-1) unstable; urgency=low
 
-  * Lot of fixes, see git log
+  * hald-addon-bme now working fine
 
- -- Pali Rohár <pali.rohar@gmail.com>  Sun, 09 Sep 2012 00:21:03 +0200
+ -- Pali Rohár <pali.rohar@gmail.com>  Sat, 15 Sep 2012 13:10:32 +0200
 
 hald-addon-bme (0.0.1) unstable; urgency=low
 
