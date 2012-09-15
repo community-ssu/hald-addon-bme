@@ -867,6 +867,29 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   return TRUE;
 }
 
+static gboolean mce_pattern_request(const char * pattern, const char * request)
+{
+  DBusMessage * msg;
+  int sent = 0;
+
+  msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", request);
+  if (!msg)
+    return FALSE;
+
+  if (dbus_message_append_args(msg, DBUS_TYPE_STRING, &pattern, DBUS_TYPE_INVALID) &&
+      dbus_connection_send(system_dbus, msg, 0))
+    sent = 1;
+
+  dbus_connection_flush(system_dbus);
+  dbus_message_unref(msg);
+
+  if (!sent)
+    return FALSE;
+
+  log_print("%s: %s\n", request, pattern);
+  return TRUE;
+}
+
 static const char * get_pattern_name(unsigned int pattern)
 {
   switch(pattern)
@@ -876,6 +899,22 @@ static const char * get_pattern_name(unsigned int pattern)
     case PATTERN_BOOST: return "PatternBoost";
     default: return NULL;
   }
+}
+
+static gboolean mce_pattern_activate(unsigned int pattern)
+{
+  const char * name = get_pattern_name(pattern);
+  if (!name)
+    return FALSE;
+  return mce_pattern_request(name, "req_led_pattern_activate");
+}
+
+static gboolean mce_pattern_deactivate(unsigned int pattern)
+{
+  const char * name = get_pattern_name(pattern);
+  if (!name)
+    return FALSE;
+  return mce_pattern_request(name, "req_led_pattern_deactivate");
 }
 
 static gboolean poll_uevent(gpointer data)
@@ -907,42 +946,11 @@ static gboolean poll_uevent(gpointer data)
 
   if (global_pattern != pattern)
   {
-      DBusMessage * msg;
-      const char * name;
+    if (global_pattern != PATTERN_NONE && mce_pattern_deactivate(global_pattern))
+      global_pattern = PATTERN_NONE;
 
-      if (global_pattern != PATTERN_NONE &&
-          (name = get_pattern_name(global_pattern)) != NULL)
-      {
-        msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", "req_led_pattern_deactivate");
-        if (msg &&
-            dbus_message_append_args(msg, DBUS_TYPE_STRING, &name, DBUS_TYPE_INVALID) &&
-            dbus_connection_send(system_dbus, msg, 0))
-        {
-          dbus_connection_flush(system_dbus);
-          log_print("deactivated mce led pattern: %s\n", name);
-          global_pattern = PATTERN_NONE;
-        }
-
-        if (msg)
-          dbus_message_unref(msg);
-      }
-
-      if (global_pattern == PATTERN_NONE &&
-          (name = get_pattern_name(pattern)) != NULL)
-      {
-        msg = dbus_message_new_method_call("com.nokia.mce", "/com/nokia/mce/request", "com.nokia.mce.request", "req_led_pattern_activate");
-        if (msg &&
-            dbus_message_append_args(msg, DBUS_TYPE_STRING, &name, DBUS_TYPE_INVALID) &&
-            dbus_connection_send(system_dbus, msg, 0))
-        {
-          dbus_connection_flush(system_dbus);
-          log_print("activated mce led pattern: %s\n", name);
-          global_pattern = pattern;
-        }
-
-        if (msg)
-          dbus_message_unref(msg);
-      }
+    if (global_pattern == PATTERN_NONE && mce_pattern_activate(pattern))
+      global_pattern = pattern;
   }
 
   if (data) return FALSE;
@@ -1052,6 +1060,14 @@ static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
   }
 
   hald_addon_bme_disable_stat_pin();
+
+  mce_pattern_deactivate(PATTERN_FULL);
+  mce_pattern_deactivate(PATTERN_CHARGING);
+  mce_pattern_deactivate(PATTERN_BOOST);
+
+  if (global_pattern != PATTERN_NONE && mce_pattern_activate(global_pattern))
+    global_pattern = PATTERN_NONE;
+
   return FALSE;
 }
 
