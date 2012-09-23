@@ -7,7 +7,7 @@ Standards-Version: 3.7.2
 
 Package: hald-addon-bme
 Architecture: any
-Depends: kernel-feature-battery, kernel-feature-charger, ${shlibs:Depends}, ${misc:Depends}
+Depends: kernel-feature-battery, kernel-feature-rx51-battery, kernel-feature-charger, ${shlibs:Depends}, ${misc:Depends}
 Conflicts: bme-dbus-proxy
 Replaces: bme-dbus-proxy
 Provides: bme-dbus-proxy
