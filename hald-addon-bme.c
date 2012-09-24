@@ -662,7 +662,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   {
     libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "ok");
     libhal_changeset_set_property_int(cs, "battery.charge_level.current", 0);
-    libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8);
+    libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8); /* STATIC */
     libhal_changeset_set_property_int(cs, "battery.charge_level.last_full", 0);
     libhal_changeset_set_property_int(cs, "battery.charge_level.percentage", 0);
     libhal_changeset_set_property_string(cs, "battery.charge_level.unit", "bars"); /* STATIC */
@@ -673,7 +673,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     libhal_changeset_set_property_int(cs, "battery.remaining_time", 0);
     libhal_changeset_set_property_bool(cs, "battery.remaining_time.calculate_per_time", FALSE); /* STATIC */
     libhal_changeset_set_property_int(cs, "battery.reporting.current", 0);
-    libhal_changeset_set_property_int(cs, "battery.reporting.design", 1272);
+    libhal_changeset_set_property_int(cs, "battery.reporting.design", 0);
     libhal_changeset_set_property_int(cs, "battery.reporting.last_full", 0);
     libhal_changeset_set_property_string(cs, "battery.reporting.unit", "mAh"); /* STATIC */
     libhal_changeset_set_property_string(cs, "battery.type","pda"); /* STATIC */
@@ -697,7 +697,6 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
         libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == STATUS_DISCHARGING));
 
   CHECK_INT(power_supply_charge_design,
-        libhal_changeset_set_property_int (cs, "battery.charge_level.design", battery_info->power_supply_charge_design/150);
         libhal_changeset_set_property_int (cs, "battery.reporting.design", battery_info->power_supply_charge_design));
 
   if(!calibrated)
@@ -795,14 +794,16 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   CHECK_INT(power_supply_charge_now,
         libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
 
-  if (calibrated)
+  if (calibrated && battery_info->power_supply_charge_design != 0)
   {
-    CHECK_INT(power_supply_charge_now,
-          libhal_changeset_set_property_int (cs, "battery.charge_level.last_full", battery_info->power_supply_charge_full/150);
+    if (battery_info->power_supply_charge_full > battery_info->power_supply_charge_design)
+      battery_info->power_supply_charge_full = battery_info->power_supply_charge_design;
+    CHECK_INT(power_supply_charge_full,
+          libhal_changeset_set_property_int (cs, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design);
           libhal_changeset_set_property_int (cs, "battery.reporting.last_full", battery_info->power_supply_charge_full));
   }
 
-  charge_level_current = (6.25+battery_info->power_supply_capacity)*(battery_info->power_supply_charge_design/150)/100;
+  charge_level_current = 8*(6.25+battery_info->power_supply_capacity)/100;
   if(global_bme.charge_level.current != charge_level_current)
   {
     global_bme.charge_level.current = charge_level_current;
