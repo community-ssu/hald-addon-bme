@@ -54,7 +54,6 @@ typedef struct {
   uint32 power_supply_present;
   uint32 power_supply_voltage_design;
   uint32 power_supply_voltage_now;
-  int32  power_supply_current_now;
   int32  power_supply_capacity;
   uint32 power_supply_time_to_empty_avg;
   uint32 power_supply_time_to_full_now;
@@ -366,8 +365,6 @@ static gboolean hald_addon_bme_get_bq27200_data(battery * battery_info)
       }
       else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
         battery_info->power_supply_voltage_now = atoi(tmp)/1000;
-      else if(!strcmp(line,"POWER_SUPPLY_CURRENT_NOW"))
-        battery_info->power_supply_current_now = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_FULL_NOW"))
         battery_info->power_supply_time_to_full_now = atoi(tmp);
       else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_EMPTY_AVG"))
