@@ -766,13 +766,10 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
 
   if(check_for_changes && (
        global_bme.charge_level.capacity_state != capacity_state ||
-       ((capacity_state == LOW || capacity_state == EMPTY) && (
-         (battery_info->power_supply_capacity != global_battery.power_supply_capacity && battery_info->power_supply_capacity%2 == 0) ||
-         battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY
-         )
-       )
-     )
-   )
+       capacity_state == EMPTY ||
+       (capacity_state == LOW && battery_info->power_supply_capacity != global_battery.power_supply_capacity && battery_info->power_supply_capacity%2 == 0) ||
+       (battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY && battery_info->power_supply_capacity != global_battery.power_supply_capacity)
+    ))
   {
     global_bme.charge_level.capacity_state = capacity_state;
     log_print("capacity state changed to %s\n", get_capacity_state_string());
