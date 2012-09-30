@@ -635,8 +635,6 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
 #define CHECK_INT(f,fun) if( !check_for_changes || (global_battery.f != battery_info->f)) \
   log_print(#f " changed,updating to %d",battery_info->f);fun
 
-  DBusError error;
-  LibHalChangeSet *cs;
   uint32 charge_level_current;
   uint32 capacity_state;
   int calibrated;
@@ -652,52 +650,46 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   else
     charger_connected = 0;
 
-  cs = libhal_device_new_changeset (udi);
-  if (cs == NULL)
-  {
-          log_print("Cannot initialize changeset");
-          return FALSE;
-  }
   if(!check_for_changes)
   {
-    libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", "ok");
-    libhal_changeset_set_property_int(cs, "battery.charge_level.current", 0);
-    libhal_changeset_set_property_int(cs, "battery.charge_level.design", 8); /* STATIC */
-    libhal_changeset_set_property_int(cs, "battery.charge_level.last_full", 0);
-    libhal_changeset_set_property_int(cs, "battery.charge_level.percentage", 0);
-    libhal_changeset_set_property_string(cs, "battery.charge_level.unit", "bars"); /* STATIC */
-    libhal_changeset_set_property_bool(cs, "battery.is_rechargeable", TRUE); /* STATIC */
-    libhal_changeset_set_property_bool(cs, "battery.present", TRUE); /* STATIC */
-    libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", FALSE);
-    libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", TRUE);
-    libhal_changeset_set_property_int(cs, "battery.remaining_time", 0);
-    libhal_changeset_set_property_bool(cs, "battery.remaining_time.calculate_per_time", FALSE); /* STATIC */
-    libhal_changeset_set_property_int(cs, "battery.reporting.current", 0);
-    libhal_changeset_set_property_int(cs, "battery.reporting.design", 0);
-    libhal_changeset_set_property_int(cs, "battery.reporting.last_full", 0);
-    libhal_changeset_set_property_string(cs, "battery.reporting.unit", "mAh"); /* STATIC */
-    libhal_changeset_set_property_string(cs, "battery.type","pda"); /* STATIC */
-    libhal_changeset_set_property_int(cs, "battery.voltage.current", 0);
-    libhal_changeset_set_property_int(cs, "battery.voltage.design", 4200);
-    libhal_changeset_set_property_string(cs, "battery.voltage.unit", "mV"); /* STATIC */
-    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "disconnected");
-    libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
-    libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", "off");
-    libhal_changeset_set_property_bool(cs, "maemo.rechargeable.positive_rate", FALSE); /* STATIC */
+    libhal_device_set_property_string(hal_ctx, udi, "battery.charge_level.capacity_state", "ok", NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.current", 0, NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.design", 8, NULL); /* STATIC */
+    libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.last_full", 0, NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.percentage", 0, NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "battery.charge_level.unit", "bars", NULL); /* STATIC */
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.is_rechargeable", TRUE, NULL); /* STATIC */
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.present", TRUE, NULL); /* STATIC */
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", FALSE, NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", TRUE, NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.remaining_time", 0, NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.remaining_time.calculate_per_time", FALSE, NULL); /* STATIC */
+    libhal_device_set_property_int(hal_ctx, udi, "battery.reporting.current", 0, NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.reporting.design", 0, NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.reporting.last_full", 0, NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "battery.reporting.unit", "mAh", NULL); /* STATIC */
+    libhal_device_set_property_string(hal_ctx, udi, "battery.type","pda", NULL); /* STATIC */
+    libhal_device_set_property_int(hal_ctx, udi, "battery.voltage.current", 0, NULL);
+    libhal_device_set_property_int(hal_ctx, udi, "battery.voltage.design", 4200, NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "battery.voltage.unit", "mV", NULL); /* STATIC */
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "disconnected", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "none", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", "off", NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "maemo.rechargeable.positive_rate", FALSE, NULL); /* STATIC */
   }
 
   CHECK_INT(power_supply_voltage_now,
-        libhal_changeset_set_property_int (cs, "battery.voltage.current", battery_info->power_supply_voltage_now));
+        libhal_device_set_property_int (hal_ctx, udi, "battery.voltage.current", battery_info->power_supply_voltage_now, NULL));
 
   CHECK_INT(power_supply_voltage_design,
-        libhal_changeset_set_property_int (cs, "battery.voltage.design", battery_info->power_supply_voltage_design));
+        libhal_device_set_property_int (hal_ctx, udi, "battery.voltage.design", battery_info->power_supply_voltage_design, NULL));
 
   CHECK_INT(power_supply_status,
-        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_charging", charger_connected);
-        libhal_changeset_set_property_bool(cs, "battery.rechargeable.is_discharging", battery_info->power_supply_status == STATUS_DISCHARGING));
+        libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", charger_connected, NULL);
+        libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", battery_info->power_supply_status == STATUS_DISCHARGING, NULL));
 
   CHECK_INT(power_supply_charge_design,
-        libhal_changeset_set_property_int (cs, "battery.reporting.design", battery_info->power_supply_charge_design));
+        libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.design", battery_info->power_supply_charge_design, NULL));
 
   if(!calibrated)
   {
@@ -773,41 +765,44 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   if(check_for_changes && global_bme.charge_level.capacity_state != capacity_state)
   {
     global_bme.charge_level.capacity_state = capacity_state;
-    libhal_changeset_set_property_string(cs, "battery.charge_level.capacity_state", get_capacity_state_string());
+    log_print("capacity state changed to %s\n", get_capacity_state_string());
+    /* Before changing capacity_state to new value, battery status area plugin needs empty string first */
+    libhal_device_set_property_string(hal_ctx, udi, "battery.charge_level.capacity_state", "", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "battery.charge_level.capacity_state", get_capacity_state_string(), NULL);
     send_capacity_state_change();
   }
 
   if (capacity_state == FULL && charger_connected)
-    libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", "full");
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", "full", NULL);
   else
-    libhal_changeset_set_property_string(cs, "maemo.rechargeable.charging_status", charger_connected ? "on" : "off");
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", charger_connected ? "on" : "off", NULL);
 
   if (!calibrated && capacity_state == EMPTY && battery_info->power_supply_capacity > 5)
     battery_info->power_supply_capacity = 5;
 
   CHECK_INT(power_supply_capacity,
-        libhal_changeset_set_property_int (cs, "battery.charge_level.percentage", battery_info->power_supply_capacity));
+        libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.percentage", battery_info->power_supply_capacity, NULL));
 
   if (!calibrated)
     battery_info->power_supply_charge_now = battery_info->power_supply_capacity*battery_info->power_supply_charge_design/100;
 
   CHECK_INT(power_supply_charge_now,
-        libhal_changeset_set_property_int (cs, "battery.reporting.current", battery_info->power_supply_charge_now));
+        libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.current", battery_info->power_supply_charge_now, NULL));
 
   if (calibrated && battery_info->power_supply_charge_design != 0)
   {
     if (battery_info->power_supply_charge_full > battery_info->power_supply_charge_design)
       battery_info->power_supply_charge_full = battery_info->power_supply_charge_design;
     CHECK_INT(power_supply_charge_full,
-          libhal_changeset_set_property_int (cs, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design);
-          libhal_changeset_set_property_int (cs, "battery.reporting.last_full", battery_info->power_supply_charge_full));
+          libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design, NULL);
+          libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.last_full", battery_info->power_supply_charge_full, NULL));
   }
 
   charge_level_current = 8*(6.25+battery_info->power_supply_capacity)/100;
   if(global_bme.charge_level.current != charge_level_current)
   {
     global_bme.charge_level.current = charge_level_current;
-    libhal_changeset_set_property_int (cs, "battery.charge_level.current",charge_level_current);
+    libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.current",charge_level_current, NULL);
     send_battery_state_changed(charge_level_current);
   }
 
@@ -816,29 +811,29 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     if (battery_info->power_supply_status == STATUS_CHARGING)
     {
       CHECK_INT(power_supply_time_to_full_now,
-            libhal_changeset_set_property_int (cs, "battery.remaining_time", battery_info->power_supply_time_to_full_now));
+            libhal_device_set_property_int (hal_ctx, udi, "battery.remaining_time", battery_info->power_supply_time_to_full_now, NULL));
     }
     else if (battery_info->power_supply_status == STATUS_DISCHARGING)
     {
       CHECK_INT(power_supply_time_to_empty_avg,
-            libhal_changeset_set_property_int (cs, "battery.remaining_time", battery_info->power_supply_time_to_empty_avg));
+            libhal_device_set_property_int (hal_ctx, udi, "battery.remaining_time", battery_info->power_supply_time_to_empty_avg, NULL));
     }
   }
 
   if (strstr(battery_info->power_supply_mode, "host"))
   {
-    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "connected");
-    libhal_changeset_set_property_string(cs, "maemo.charger.type", "host 500 mA");
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "connected", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "host 500 mA", NULL);
   }
   else if (strstr(battery_info->power_supply_mode, "dedicated"))
   {
-    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "connected");
-    libhal_changeset_set_property_string(cs, "maemo.charger.type", "wall charger");
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "connected", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "wall charger", NULL);
   }
   else
   {
-    libhal_changeset_set_property_string(cs, "maemo.charger.connection_status", "disconnected");
-    libhal_changeset_set_property_string(cs, "maemo.charger.type", "none");
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "disconnected", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "none", NULL);
   }
 
   if (global_charger_connected != charger_connected)
@@ -853,15 +848,6 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     dsmesock_send(dsme_conn, &msg);
   }
 
-  dbus_error_init (&error);
-
-  libhal_device_commit_changeset (hal_ctx, cs, &error);
-  libhal_device_free_changeset (cs);
-  if (dbus_error_is_set (&error)) {
-          print_dbus_error("Failed to set property", &error);
-          dbus_error_free (&error);
-          return FALSE;
-  }
   return TRUE;
 }
 
