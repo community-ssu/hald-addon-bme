@@ -721,9 +721,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       else
         capacity_state = OK;
     }
-    /* Low is reported when EDV1 is set which means battery is empty */
     else if (!strcmp(battery_info->power_supply_capacity_level, "Low"))
-      capacity_state = EMPTY;
+      capacity_state = LOW;
     else if (!strcmp(battery_info->power_supply_capacity_level, "Critical"))
       capacity_state = EMPTY;
     else
@@ -736,7 +735,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     if (battery_info->power_supply_flags_register & 0x21) /* FLAG_FC */
       capacity_state = FULL;
     else if (battery_info->power_supply_flags_register & 0x02) /* FLAG_EDV1 */
-      capacity_state = EMPTY;
+      capacity_state = LOW;
     else if (battery_info->power_supply_flags_register & 0x01) /* FLAG_EDVF */
       capacity_state = EMPTY;
     else if (battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
