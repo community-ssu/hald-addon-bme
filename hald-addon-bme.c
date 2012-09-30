@@ -716,7 +716,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       capacity_state = FULL;
     else if (!strcmp(battery_info->power_supply_capacity_level, "Normal"))
     {
-      if (battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
+      if (battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
         capacity_state = LOW;
       else
         capacity_state = OK;
@@ -739,7 +739,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       capacity_state = EMPTY;
     else if (battery_info->power_supply_flags_register & 0x01) /* FLAG_EDVF */
       capacity_state = EMPTY;
-    else if (battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
+    else if (battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
       capacity_state = LOW;
     else
       capacity_state = OK;
@@ -748,9 +748,9 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   {
     if(battery_info->power_supply_capacity > POWER_SUPPLY_CAPACITY_THRESHOLD_FULL)
       capacity_state = FULL;
-    else if(battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW)
+    else if(battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_LOW)
     {
-      if(battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY)
+      if(battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY)
         capacity_state = EMPTY;
       else
         capacity_state = LOW;
@@ -762,7 +762,18 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   if (battery_info->power_supply_status == STATUS_FULL)
     capacity_state = FULL;
 
-  if(check_for_changes && global_bme.charge_level.capacity_state != capacity_state)
+  if ((capacity_state == LOW || capacity_state == EMPTY) && charger_connected)
+    capacity_state = OK;
+
+  if(check_for_changes && (
+       global_bme.charge_level.capacity_state != capacity_state ||
+       ((capacity_state == LOW || capacity_state == EMPTY) && (
+         (battery_info->power_supply_capacity != global_battery.power_supply_capacity && battery_info->power_supply_capacity%2 == 0) ||
+         battery_info->power_supply_capacity <= POWER_SUPPLY_CAPACITY_THRESHOLD_EMPTY
+         )
+       )
+     )
+   )
   {
     global_bme.charge_level.capacity_state = capacity_state;
     log_print("capacity state changed to %s\n", get_capacity_state_string());
