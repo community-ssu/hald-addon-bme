@@ -732,7 +732,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   /* code taken from upstream kernel */
   else if (battery_info->power_supply_flags_register >= 0)
   {
-    if (battery_info->power_supply_flags_register & 0x21) /* FLAG_FC */
+    if (battery_info->power_supply_flags_register & 0x20) /* FLAG_FC */
       capacity_state = FULL;
     else if (battery_info->power_supply_flags_register & 0x02) /* FLAG_EDV1 */
       capacity_state = LOW;
