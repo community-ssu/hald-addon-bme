@@ -404,7 +404,7 @@ static gboolean hald_addon_bme_get_bq27200_registers(battery * battery_info)
       tmp++;
       tmp[strlen(tmp)-1] = 0;
       if(!strcmp(line,"0x0a"))
-        battery_info->power_supply_flags_register = atoi(tmp);
+        battery_info->power_supply_flags_register = strtol(tmp, NULL, 16);
     }
   }
   fclose(fp);
@@ -741,11 +741,11 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   /* code taken from upstream kernel */
   else if (battery_info->power_supply_flags_register >= 0)
   {
-    if (battery_info->power_supply_flags_register & 0x20) /* FLAG_FC */
+    if (battery_info->power_supply_flags_register & 0x21) /* FLAG_FC */
       capacity_state = FULL;
-    else if (battery_info->power_supply_flags_register & 0x01) /* FLAG_EDV1 */
+    else if (battery_info->power_supply_flags_register & 0x02) /* FLAG_EDV1 */
       capacity_state = EMPTY;
-    else if (battery_info->power_supply_flags_register & 0x00) /* FLAG_EDVF */
+    else if (battery_info->power_supply_flags_register & 0x01) /* FLAG_EDVF */
       capacity_state = EMPTY;
     else if (battery_info->power_supply_capacity < POWER_SUPPLY_CAPACITY_THRESHOLD_LOW && calibrated)
       capacity_state = LOW;
