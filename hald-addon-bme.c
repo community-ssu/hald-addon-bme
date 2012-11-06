@@ -337,7 +337,7 @@ static gboolean hald_addon_bme_get_rx51_data(battery * battery_info)
       else if(!strcmp(line,"POWER_SUPPLY_CHARGE_FULL_DESIGN"))
       {
         battery_info->power_supply_charge_design = atoi(tmp)/1000;
-        if(abs(global_battery.power_supply_charge_design - battery_info->power_supply_charge_design) >= 100)
+        if(battery_info->power_supply_charge_design > 0 && global_battery.power_supply_charge_design > 0 && abs(global_battery.power_supply_charge_design - battery_info->power_supply_charge_design) < 100)
           battery_info->power_supply_charge_design = global_battery.power_supply_charge_design;
       }
     }
@@ -876,12 +876,16 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   CHECK_INT(power_supply_charge_now,
         libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.current", battery_info->power_supply_charge_now, NULL));
 
-  if (calibrated && battery_info->power_supply_charge_design != 0)
+  if (calibrated)
   {
-    if (battery_info->power_supply_charge_full > battery_info->power_supply_charge_design)
-      battery_info->power_supply_charge_full = battery_info->power_supply_charge_design;
+    if (battery_info->power_supply_charge_design > 0)
+    {
+      if (battery_info->power_supply_charge_full > battery_info->power_supply_charge_design)
+        battery_info->power_supply_charge_full = battery_info->power_supply_charge_design;
+      CHECK_INT(power_supply_charge_full,
+            libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design, NULL));
+    }
     CHECK_INT(power_supply_charge_full,
-          libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design, NULL);
           libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.last_full", battery_info->power_supply_charge_full, NULL));
   }
 
