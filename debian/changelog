@@ -1,4 +1,4 @@
-hald-addon-bme (1.0-1) unstable; urgency=low
+hald-addon-bme (1.0-1) fremantle; urgency=low
 
   * hald-addon-bme now working fine
 
