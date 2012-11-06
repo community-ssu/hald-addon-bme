@@ -335,7 +335,11 @@ static gboolean hald_addon_bme_get_rx51_data(battery * battery_info)
       else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
         battery_info->power_supply_voltage_now = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_CHARGE_FULL_DESIGN"))
+      {
         battery_info->power_supply_charge_design = atoi(tmp)/1000;
+        if(abs(global_battery.power_supply_charge_design - battery_info->power_supply_charge_design) >= 100)
+          battery_info->power_supply_charge_design = global_battery.power_supply_charge_design;
+      }
     }
   }
   fclose(fp);
@@ -717,22 +721,40 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_EMPTY)
         battery_info->power_supply_capacity = 0;
       else if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW)
-        battery_info->power_supply_capacity = 5;
+        battery_info->power_supply_capacity = 6;
       else if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW)
-        battery_info->power_supply_capacity = 15;
+        battery_info->power_supply_capacity = 20;
       else if (battery_info->power_supply_voltage_now > POWER_SUPPLY_VOLTAGE_THRESHOLD_FULL)
-        battery_info->power_supply_capacity = 95;
+        battery_info->power_supply_capacity = 100;
       else
-        battery_info->power_supply_capacity = 55;
+        battery_info->power_supply_capacity = 53;
+      capacity = 100*(battery_info->power_supply_capacity-6)/94;
     }
     else
     {
-        battery_info->power_supply_capacity = 55;
+      if (battery_info->power_supply_voltage_now <= 4036) /* 11% */
+        capacity = 0;
+      else if (battery_info->power_supply_voltage_now <= 4089) /* 24% */
+        capacity = 13;
+      else if (battery_info->power_supply_voltage_now <= 4099) /* 35% */
+        capacity = 25;
+      else if (battery_info->power_supply_voltage_now <= 4110) /* 47% */
+        capacity = 38;
+      else if (battery_info->power_supply_voltage_now <= 4120) /* 58% */
+        capacity = 50;
+      else if (battery_info->power_supply_voltage_now <= 4134) /* 71% */
+        capacity = 63;
+      else if (battery_info->power_supply_voltage_now <= 4150) /* 82% */
+        capacity = 75;
+      else if (battery_info->power_supply_voltage_now <= 4168) /* 94% */
+        capacity = 88;
+      else
+        capacity = 100;
+      battery_info->power_supply_capacity = capacity*94/100+6;
     }
-    capacity = battery_info->power_supply_capacity - 5;
   }
 
-  if (calibrated && capacity < 0)
+  if (capacity < 0)
     capacity = 0;
 
   /* capacity_level is in upstream kernel */
@@ -818,8 +840,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
 
   if (capacity_state == FULL && !calibrated)
   {
-    battery_info->power_supply_capacity = 95;
-    capacity = 90;
+    battery_info->power_supply_capacity = 100;
+    capacity = 100;
   }
 
   if (very_low)
