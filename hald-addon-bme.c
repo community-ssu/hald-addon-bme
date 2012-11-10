@@ -94,7 +94,8 @@ dsmesock_connection_t * dsme_conn;
 
 enum { PATTERN_NONE, PATTERN_FULL, PATTERN_CHARGING, PATTERN_BOOST } global_pattern;
 
-#define DEBUG
+/*#define DEBUG*/
+
 #define DEBUG_FILE      "/tmp/hald-addon-bme.log"
 
 #define BQ27200_UEVENT_FILE_PATH "/sys/class/power_supply/bq27200-0/uevent"
