@@ -932,7 +932,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "none", NULL);
   }
 
-  if (global_charger_connected != charger_connected)
+  if (!check_for_changes || global_charger_connected != charger_connected)
   {
     DSM_MSGTYPE_SET_CHARGER_STATE msg =
       DSME_MSG_INIT(DSM_MSGTYPE_SET_CHARGER_STATE);
