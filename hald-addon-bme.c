@@ -161,7 +161,6 @@ DBusConnection *server_dbus = 0;
 LibHalContext *hal_ctx = 0;
 const char *udi = 0;
 GMainLoop *mainloop = 0;
-gboolean display_status_ind=FALSE;
 guint poll_period = 30;
 
 static void cleanup_system_dbus()
@@ -541,91 +540,6 @@ error:
   goto out;
 dbus_error:
     log_print("proxy_init %s: %s\n",error.name,error.message);
-out:
-  dbus_error_free(&error);
-  return result;
-}
-
-
-static DBusHandlerResult hald_addon_bme_mce_signal(DBusConnection *connection G_GNUC_UNUSED, DBusMessage *message, void *user_data G_GNUC_UNUSED)
-{
-  const char *interface, *member, *path;
-  int type;
-  DBusError error;
-
-  dbus_error_init(&error);
-
-  interface = dbus_message_get_interface(message);
-  member = dbus_message_get_member(message);
-  path = dbus_message_get_path(message);
-
-  type = dbus_message_get_type(message);
-  if(interface &&
-     member &&
-     path &&
-     type == DBUS_MESSAGE_TYPE_SIGNAL &&
-     !strcmp(interface, "com.nokia.mce.signal") &&
-     !strcmp(path, "/com/nokia/mce/signal") &&
-     !strcmp(member, "display_status_ind"))
-  {
-    const char * tmp = 0, *status = "NULL";
-    dbus_message_get_args(message,
-                          &error,
-                          DBUS_TYPE_STRING,
-                          &tmp,
-                          DBUS_TYPE_INVALID);
-    if(tmp)
-      status = tmp;
-
-    log_print("MCE RECV: MCE_DISPLAY_SIG '%s'\n\n", status);
-
-    if(!tmp || strcmp(tmp,"on"))
-      display_status_ind = FALSE;
-    else
-    {
-      display_status_ind = TRUE;
-    }
-  }
-
-  dbus_error_free(&error);
-
-  return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-}
-
-static gint hald_addon_bme_server_dbus_init()
-{
-  DBusError error;
-  gint result = -1;
-
-  dbus_error_init(&error);
-
-  if(!(server_dbus = dbus_bus_get(DBUS_BUS_SYSTEM, &error)))
-  {
-    if (dbus_error_is_set(&error))
-      print_dbus_error("server_dbus_init",&error);
-    else
-      log_print("server_dbus_init");
-    goto out;
-  }
-
-  dbus_connection_setup_with_g_main(server_dbus, 0);
-  dbus_connection_set_exit_on_disconnect(server_dbus, FALSE);
-
-  if(!dbus_connection_add_filter(system_dbus, hald_addon_bme_mce_signal, NULL, NULL))
-  {
-    log_print("server_dbus_init");
-    goto out;
-  }
-  dbus_bus_add_match(system_dbus,
-                     "type='signal',interface='com.nokia.mce.signal'",
-                     &error);
-  if (dbus_error_is_set(&error))
-  {
-    print_dbus_error("server_dbus_init",&error);
-    goto out;
-  }
-  result = 0;
-
 out:
   dbus_error_free(&error);
   return result;
@@ -1158,6 +1072,86 @@ static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
     global_pattern = PATTERN_NONE;
 
   return FALSE;
+}
+
+static DBusHandlerResult hald_addon_bme_mce_signal(DBusConnection *connection G_GNUC_UNUSED, DBusMessage *message, void *user_data G_GNUC_UNUSED)
+{
+  const char *interface, *member, *path;
+  int type;
+  DBusError error;
+
+  dbus_error_init(&error);
+
+  interface = dbus_message_get_interface(message);
+  member = dbus_message_get_member(message);
+  path = dbus_message_get_path(message);
+
+  type = dbus_message_get_type(message);
+  if(interface &&
+     member &&
+     path &&
+     type == DBUS_MESSAGE_TYPE_SIGNAL &&
+     !strcmp(interface, "com.nokia.mce.signal") &&
+     !strcmp(path, "/com/nokia/mce/signal") &&
+     !strcmp(member, "display_status_ind"))
+  {
+    const char * tmp = 0, *status = "NULL";
+    dbus_message_get_args(message,
+                          &error,
+                          DBUS_TYPE_STRING,
+                          &tmp,
+                          DBUS_TYPE_INVALID);
+    if(tmp)
+      status = tmp;
+
+    log_print("MCE RECV: MCE_DISPLAY_SIG '%s'\n\n", status);
+
+    if(tmp && strcmp(tmp,"on"))
+      poll_uevent(NULL);
+  }
+
+  dbus_error_free(&error);
+
+  return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+}
+
+static gint hald_addon_bme_server_dbus_init()
+{
+  DBusError error;
+  gint result = -1;
+
+  dbus_error_init(&error);
+
+  if(!(server_dbus = dbus_bus_get(DBUS_BUS_SYSTEM, &error)))
+  {
+    if (dbus_error_is_set(&error))
+      print_dbus_error("server_dbus_init",&error);
+    else
+      log_print("server_dbus_init");
+    goto out;
+  }
+
+  dbus_connection_setup_with_g_main(server_dbus, 0);
+  dbus_connection_set_exit_on_disconnect(server_dbus, FALSE);
+
+  if(!dbus_connection_add_filter(system_dbus, hald_addon_bme_mce_signal, NULL, NULL))
+  {
+    log_print("server_dbus_init");
+    goto out;
+  }
+  dbus_bus_add_match(system_dbus,
+                     "type='signal',interface='com.nokia.mce.signal'",
+                     &error);
+  if (dbus_error_is_set(&error))
+  {
+    print_dbus_error("server_dbus_init",&error);
+    goto out;
+  }
+  result = 0;
+
+out:
+  dbus_error_free(&error);
+  return result;
 }
 
 int main ()
