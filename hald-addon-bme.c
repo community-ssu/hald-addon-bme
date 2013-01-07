@@ -51,6 +51,7 @@ typedef int32_t int32;
 
 typedef struct {
   enum{STATUS_FULL,STATUS_CHARGING,STATUS_DISCHARGING}power_supply_status;
+  int32 capacity;
   uint32 power_supply_present;
   uint32 power_supply_voltage_design;
   uint32 power_supply_voltage_now;
@@ -667,6 +668,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
 
   if (capacity < 0)
     capacity = 0;
+  else if (capacity > 100)
+    capacity = 100;
 
   /* capacity_level is in upstream kernel */
   if(battery_info->power_supply_capacity_level[0])
@@ -758,7 +761,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   if (very_low)
     capacity = 0;
 
-  CHECK_INT(power_supply_capacity,
+  if (!check_for_changes || (global_battery.power_supply_capacity != battery_info->power_supply_capacity)) {
+    log_print("power_supply_capacity changed,updating to %d", capacity);
+    global_battery.power_supply_capacity = battery_info->power_supply_capacity;
+  }
+
+  CHECK_INT(capacity,
     libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.percentage", capacity, NULL));
 
   if(check_for_changes && (
