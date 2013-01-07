@@ -57,6 +57,7 @@ typedef struct {
   uint32 power_supply_voltage_now;
   int32  power_supply_capacity;
   uint32 power_supply_time_to_empty_avg;
+  uint32 power_supply_time_to_empty_idle;
   uint32 power_supply_time_to_full_now;
   uint32 power_supply_charge_design;
   uint32 power_supply_charge_full;
@@ -409,6 +410,7 @@ static gboolean hald_addon_bme_get_bq27200_registers(battery * battery_info)
   while(fgets(line,sizeof(line),fp))
   {
     char*tmp;
+    int num;
     tmp = strchr(line,'=');
     if(tmp)
     {
@@ -417,6 +419,11 @@ static gboolean hald_addon_bme_get_bq27200_registers(battery * battery_info)
       tmp[strlen(tmp)-1] = 0;
       if(!strcmp(line,"0x0a"))
         battery_info->power_supply_flags_register = strtol(tmp, NULL, 16);
+      else if(!strcmp(line,"0x1c")) {
+        num = strtol(tmp, NULL, 16);
+        if(num != 65535)
+          battery_info->power_supply_time_to_empty_idle = num * 60;
+      }
     }
   }
   fclose(fp);
@@ -435,15 +442,18 @@ static void hald_addon_bme_status_info()
 
 static void hald_addon_bme_timeleft_info()
 {
-  uint32 minutes = 0;
+  uint32 idle = 0;
+  uint32 active = 0;
   log_print("%s\n",__func__);
-  if (global_battery.power_supply_time_to_empty_avg)
-    minutes = global_battery.power_supply_time_to_empty_avg/60;
-  else if (global_battery.power_supply_time_to_full_now)
-    minutes = global_battery.power_supply_time_to_full_now/60;
+  if (global_battery.power_supply_time_to_empty_avg) {
+    idle = active = global_battery.power_supply_time_to_empty_avg/60;
+    if (global_battery.power_supply_time_to_empty_idle > idle)
+      idle = global_battery.power_supply_time_to_empty_idle/60;
+  } else if (global_battery.power_supply_time_to_full_now)
+    idle = active = global_battery.power_supply_time_to_full_now/60;
   send_dbus_signal("battery_timeleft",
-      DBUS_TYPE_UINT32, &minutes,
-      DBUS_TYPE_UINT32, &minutes,
+      DBUS_TYPE_UINT32, &idle,
+      DBUS_TYPE_UINT32, &active,
       DBUS_TYPE_INVALID);
 }
 
