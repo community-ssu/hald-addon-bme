@@ -50,7 +50,7 @@ typedef uint32_t uint32;
 typedef int32_t int32;
 
 typedef struct {
-  enum{STATUS_FULL,STATUS_CHARGING,STATUS_DISCHARGING}power_supply_status;
+  enum{STATUS_FULL=1,STATUS_CHARGING,STATUS_DISCHARGING}power_supply_status;
   int32 capacity;
   uint32 power_supply_present;
   uint32 power_supply_voltage_design;
@@ -82,7 +82,7 @@ battery global_battery;
 
 typedef struct {
   struct {
-    enum {EMPTY,LOW,OK,FULL}capacity_state;
+    enum {EMPTY=1,LOW,OK,FULL}capacity_state;
     uint32 current;
     uint32 percentage;
   }charge_level;
