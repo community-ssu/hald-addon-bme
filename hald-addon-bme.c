@@ -834,15 +834,28 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     send_battery_state_changed(charge_level_current);
   }
 
-  if (calibrated)
+  if (!calibrated)
+  {
+      if (global_battery.power_supply_time_to_empty_avg != 0 || global_battery.power_supply_time_to_full_now != 0)
+        libhal_device_set_property_int (hal_ctx, udi, "battery.remaining_time", 0, NULL);
+      global_battery.power_supply_time_to_empty_avg = 0;
+      global_battery.power_supply_time_to_empty_idle = 0;
+      global_battery.power_supply_time_to_full_now = 0;
+  }
+  else
   {
     if (battery_info->power_supply_status == STATUS_CHARGING)
     {
+      global_battery.power_supply_time_to_empty_avg = 0;
+      global_battery.power_supply_time_to_empty_idle = 0;
       CHECK_INT(power_supply_time_to_full_now,
             libhal_device_set_property_int (hal_ctx, udi, "battery.remaining_time", battery_info->power_supply_time_to_full_now, NULL));
     }
     else if (battery_info->power_supply_status == STATUS_DISCHARGING)
     {
+      global_battery.power_supply_time_to_full_now = 0;
+      if (global_battery.power_supply_time_to_empty_idle != battery_info->power_supply_time_to_empty_idle)
+        global_battery.power_supply_time_to_empty_idle = battery_info->power_supply_time_to_empty_idle;
       CHECK_INT(power_supply_time_to_empty_avg,
             libhal_device_set_property_int (hal_ctx, udi, "battery.remaining_time", battery_info->power_supply_time_to_empty_avg, NULL));
     }
