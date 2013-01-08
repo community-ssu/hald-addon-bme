@@ -771,14 +771,6 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   if (very_low)
     capacity = 0;
 
-  if (!check_for_changes || (global_battery.power_supply_capacity != battery_info->power_supply_capacity)) {
-    log_print("power_supply_capacity changed,updating to %d", capacity);
-    global_battery.power_supply_capacity = battery_info->power_supply_capacity;
-  }
-
-  CHECK_INT(capacity,
-    libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.percentage", capacity, NULL));
-
   if(check_for_changes && (
        global_bme.charge_level.capacity_state != capacity_state ||
        capacity_state == EMPTY ||
@@ -793,6 +785,14 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     libhal_device_set_property_string(hal_ctx, udi, "battery.charge_level.capacity_state", get_capacity_state_string(), NULL);
     send_capacity_state_change();
   }
+
+  if (!check_for_changes || (global_battery.power_supply_capacity != battery_info->power_supply_capacity)) {
+    log_print("power_supply_capacity changed,updating to %d", battery_info->power_supply_capacity);
+    global_battery.power_supply_capacity = battery_info->power_supply_capacity;
+  }
+
+  CHECK_INT(capacity,
+    libhal_device_set_property_int(hal_ctx, udi, "battery.charge_level.percentage", capacity, NULL));
 
   if (capacity_state == FULL && charger_connected)
   {
