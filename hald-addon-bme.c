@@ -856,6 +856,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       global_battery.power_supply_time_to_full_now = 0;
       if (global_battery.power_supply_time_to_empty_idle != battery_info->power_supply_time_to_empty_idle)
         global_battery.power_supply_time_to_empty_idle = battery_info->power_supply_time_to_empty_idle;
+      if (battery_info->power_supply_time_to_empty_avg > battery_info->power_supply_time_to_empty_idle && battery_info->power_supply_time_to_empty_idle)
+        battery_info->power_supply_time_to_empty_avg = battery_info->power_supply_time_to_empty_idle;
       CHECK_INT(power_supply_time_to_empty_avg,
             libhal_device_set_property_int (hal_ctx, udi, "battery.remaining_time", battery_info->power_supply_time_to_empty_avg, NULL));
     }
