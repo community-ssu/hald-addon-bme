@@ -445,7 +445,7 @@ static void hald_addon_bme_timeleft_info()
   uint32 idle = 0;
   uint32 active = 0;
   log_print("%s\n",__func__);
-  if (global_battery.power_supply_time_to_empty_avg) {
+  if (global_battery.power_supply_time_to_empty_avg && !global_charger_connected) {
     idle = active = global_battery.power_supply_time_to_empty_avg/60;
     if (global_battery.power_supply_time_to_empty_idle > idle)
       idle = global_battery.power_supply_time_to_empty_idle/60;
