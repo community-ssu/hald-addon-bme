@@ -69,16 +69,16 @@ typedef struct {
 
 battery global_battery;
 
-#define POWER_SUPPLY_CAPACITY_THRESHOLD_FULL 95
+#define POWER_SUPPLY_CAPACITY_THRESHOLD_FULL 94
 
-#define POWER_SUPPLY_CHARGE_THRESHOLD_LOW 200
-#define POWER_SUPPLY_CHARGE_THRESHOLD_VERYLOW 80
-#define POWER_SUPPLY_CHARGE_THRESHOLD_EMPTY 20
+#define POWER_SUPPLY_CHARGE_THRESHOLD_LOW 170
+#define POWER_SUPPLY_CHARGE_THRESHOLD_VERYLOW 100
+#define POWER_SUPPLY_CHARGE_THRESHOLD_EMPTY 70
 
 #define POWER_SUPPLY_VOLTAGE_THRESHOLD_FULL 4050
-#define POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW 3580
-#define POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW 3248
-#define POWER_SUPPLY_VOLTAGE_THRESHOLD_EMPTY 3000
+#define POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW 3640
+#define POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW 3530
+#define POWER_SUPPLY_VOLTAGE_THRESHOLD_EMPTY 3248
 
 typedef struct {
   struct {
@@ -626,16 +626,44 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   CHECK_INT(power_supply_charge_design,
         libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.design", battery_info->power_supply_charge_design, NULL));
 
+  /* hal edge   real edge
+        0          8
+       13         19.96
+       25         31
+       38         42.96
+       50         54
+       63         65.96
+       75         77
+       88         88.96
+      100        100
+  */
+
+  /*
+     bars   status  hal capacity real capacity
+      0     empty      0%-0%        0%-EDV1
+      0     very low   0%-0%      EDV1-8%
+      0     low        0%-6%        9%-14%
+      1     ok         7%-19%      15%-25%
+      2     ok        20%-31%      26%-37%
+      3     ok        32%-44%      38%-48%
+      4     ok        45%-56%      49%-59%
+      5     ok        57%-69%      60%-70%
+      6     ok        70%-81%      71%-83%
+      7     ok        82%-94%      84%-94%
+      8     full      95%-100%     95%-100%
+   */
+
   /* we should tell capacity is 0% when battery is very low */
-  /* very low is someting between empty and low, so EDV1 flag can be used for that */
-  /* EDV1 is set when capacity is 6%, so recalculate capacity from 6%-100% to 0%-100% (to tell 0% when battery is very low which means battery has 6%) */
+  /* very low is someting between empty and low */
+  /* EDV1 is set when capacity is about 6% (which turn off device), so very low could be 8% */
+  /* so recalculate capacity from 8%-100% to 0%-100% (to tell 0% when battery is very low which means battery has 8%) */
 
   /* bq27200 report percentage capacity against last full capacity */
   /* we will recalculate percentage capacity against design capacity reported by rx51_battery (if driver is available) */
   if(calibrated && battery_info->power_supply_charge_now > 0 && battery_info->power_supply_charge_design > 0)
-    capacity = 100 * (100*battery_info->power_supply_charge_now - 6*battery_info->power_supply_charge_design) / (94*battery_info->power_supply_charge_design);
+    capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_design) / (92*battery_info->power_supply_charge_design);
   else if(calibrated && battery_info->power_supply_charge_now > 0 && battery_info->power_supply_charge_full > 0)
-    capacity = 100 * (100*battery_info->power_supply_charge_now - 6*battery_info->power_supply_charge_full) / (94*battery_info->power_supply_charge_full);
+    capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_full) / (92*battery_info->power_supply_charge_full);
   else /* when battery is not calibrated or other data is missing, report some capacity from voltage */
   {
     if (!charger_connected)
@@ -643,36 +671,36 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_EMPTY)
         battery_info->power_supply_capacity = 0;
       else if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW)
-        battery_info->power_supply_capacity = 6;
+        battery_info->power_supply_capacity = 7;
       else if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW)
-        battery_info->power_supply_capacity = 20;
+        battery_info->power_supply_capacity = 12;
       else if (battery_info->power_supply_voltage_now > POWER_SUPPLY_VOLTAGE_THRESHOLD_FULL)
         battery_info->power_supply_capacity = 100;
       else
-        battery_info->power_supply_capacity = 53;
-      capacity = 100*(battery_info->power_supply_capacity-6)/94;
+        battery_info->power_supply_capacity = 54;
+      capacity = 100*(battery_info->power_supply_capacity-8)/92;
     }
     else
     {
-      if (battery_info->power_supply_voltage_now <= 4036) /* 11% */
+      if (battery_info->power_supply_voltage_now <= 4050) /* 14% */
         capacity = 0;
-      else if (battery_info->power_supply_voltage_now <= 4089) /* 24% */
+      else if (battery_info->power_supply_voltage_now <= 4089) /* 25% */
         capacity = 13;
-      else if (battery_info->power_supply_voltage_now <= 4099) /* 35% */
+      else if (battery_info->power_supply_voltage_now <= 4102) /* 37% */
         capacity = 25;
-      else if (battery_info->power_supply_voltage_now <= 4110) /* 47% */
+      else if (battery_info->power_supply_voltage_now <= 4110) /* 48% */
         capacity = 38;
-      else if (battery_info->power_supply_voltage_now <= 4120) /* 58% */
+      else if (battery_info->power_supply_voltage_now <= 4120) /* 59% */
         capacity = 50;
-      else if (battery_info->power_supply_voltage_now <= 4134) /* 71% */
+      else if (battery_info->power_supply_voltage_now <= 4134) /* 70% */
         capacity = 63;
-      else if (battery_info->power_supply_voltage_now <= 4150) /* 82% */
+      else if (battery_info->power_supply_voltage_now <= 4152) /* 83% */
         capacity = 75;
       else if (battery_info->power_supply_voltage_now <= 4168) /* 94% */
         capacity = 88;
       else
         capacity = 100;
-      battery_info->power_supply_capacity = capacity*94/100+6;
+      battery_info->power_supply_capacity = capacity*92/100+8;
     }
   }
 
@@ -690,17 +718,30 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       capacity_state = FULL;
     else if (!strcmp(battery_info->power_supply_capacity_level, "Normal"))
     {
-      if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_LOW && calibrated)
-        capacity_state = LOW;
-      else if(battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW && !calibrated)
-        capacity_state = LOW;
+      if (calibrated)
+      {
+        if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_VERYLOW) {
+          capacity_state = LOW;
+          very_low = 1;
+        } else if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_LOW)
+          capacity_state = LOW;
+        else
+          capacity_state = OK;
+      }
       else
-        capacity_state = OK;
+      {
+        if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW) {
+          capacity_state = LOW;
+          very_low = 1;
+        } if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW)
+          capacity_state = LOW;
+        else
+          capacity_state = OK;
+      }
     }
-    else if (!strcmp(battery_info->power_supply_capacity_level, "Low")) {
-      capacity_state = LOW;
-      very_low = 1;
-    } else if (!strcmp(battery_info->power_supply_capacity_level, "Critical"))
+    else if (!strcmp(battery_info->power_supply_capacity_level, "Low"))
+      capacity_state = EMPTY;
+    else if (!strcmp(battery_info->power_supply_capacity_level, "Critical"))
       capacity_state = EMPTY;
     else
       capacity_state = OK;
@@ -713,15 +754,28 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       capacity_state = FULL;
     else if (battery_info->power_supply_flags_register & 0x01) /* FLAG_EDVF */
       capacity_state = EMPTY;
-    else if (battery_info->power_supply_flags_register & 0x02) { /* FLAG_EDV1 */
-      capacity_state = LOW;
-      very_low = 1;
-    } else if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_LOW && calibrated)
-      capacity_state = LOW;
-    else if(battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW && !calibrated)
-      capacity_state = LOW;
+    else if (battery_info->power_supply_flags_register & 0x02) /* FLAG_EDV1 */
+      capacity_state = EMPTY;
+    else if (calibrated)
+    {
+      if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_VERYLOW) {
+        capacity_state = LOW;
+        very_low = 1;
+      } else if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_LOW)
+        capacity_state = LOW;
+      else
+        capacity_state = OK;
+    }
     else
-      capacity_state = OK;
+    {
+      if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW) {
+        capacity_state = LOW;
+        very_low = 1;
+      } else if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW)
+        capacity_state = LOW;
+      else
+        capacity_state = OK;
+    }
   }
   /* no maemo kernel-power or upstream kernel, but battery is calibrated */
   /* check charge_now threshold */
