@@ -615,6 +615,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "none", NULL);
     libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", "off", NULL);
     libhal_device_set_property_bool(hal_ctx, udi, "maemo.rechargeable.positive_rate", FALSE, NULL); /* STATIC */
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.bme.version", "1.0", NULL); /* STATIC */
   }
 
   CHECK_INT(power_supply_voltage_now,
