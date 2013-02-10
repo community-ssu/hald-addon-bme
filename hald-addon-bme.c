@@ -62,6 +62,7 @@ typedef struct {
   uint32 power_supply_charge_design;
   uint32 power_supply_charge_full;
   uint32 power_supply_charge_now;
+  int32  power_supply_current_now;
   int32  power_supply_flags_register;
   char   power_supply_capacity_level[32];
   char   power_supply_mode[32];
@@ -91,6 +92,7 @@ typedef struct {
 bme global_bme;
 
 int global_charger_connected = 0;
+int global_is_charging = 0;
 
 dsmesock_connection_t * dsme_conn;
 
@@ -376,6 +378,8 @@ static gboolean hald_addon_bme_get_bq27200_data(battery * battery_info)
         else if (!strcmp(tmp,"Charging")) battery_info->power_supply_status = STATUS_CHARGING;
         else battery_info->power_supply_status = STATUS_DISCHARGING;
       }
+      else if(!strcmp(line,"POWER_SUPPLY_CURRENT_NOW"))
+        battery_info->power_supply_current_now = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_VOLTAGE_NOW"))
         battery_info->power_supply_voltage_now = atoi(tmp)/1000;
       else if(!strcmp(line,"POWER_SUPPLY_TIME_TO_FULL_NOW"))
@@ -576,6 +580,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   uint32 capacity_state;
   int calibrated;
   int charger_connected;
+  int is_charging;
   int capacity;
   int very_low = 0;
 
@@ -588,6 +593,11 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     charger_connected = 1;
   else
     charger_connected = 0;
+
+  if (battery_info->power_supply_current_now > 0 && charger_connected)
+    is_charging = 1;
+  else
+    is_charging = 0;
 
   if(!check_for_changes)
   {
@@ -716,7 +726,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     if (!strcmp(battery_info->power_supply_capacity_level, "Full"))
       capacity_state = FULL;
     else if (!strcmp(battery_info->power_supply_capacity_level, "High"))
-      capacity_state = FULL;
+    {
+      if (is_charging)
+        capacity_state = OK;
+      else
+        capacity_state = FULL;
+    }
     else if (!strcmp(battery_info->power_supply_capacity_level, "Normal"))
     {
       if (calibrated)
@@ -790,7 +805,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     } else if (battery_info->power_supply_charge_now <= POWER_SUPPLY_CHARGE_THRESHOLD_LOW)
       capacity_state = LOW;
     else if (battery_info->power_supply_capacity > POWER_SUPPLY_CAPACITY_THRESHOLD_FULL)
-      capacity_state = FULL;
+    {
+      if (is_charging)
+        capacity_state = OK;
+      else
+        capacity_state = FULL;
+    }
     else
       capacity_state = OK;
   }
@@ -806,7 +826,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     } else if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_LOW)
       capacity_state = LOW;
     else if (battery_info->power_supply_voltage_now > POWER_SUPPLY_VOLTAGE_THRESHOLD_FULL)
-      capacity_state = FULL;
+    {
+      if (is_charging)
+        capacity_state = OK;
+      else
+        capacity_state = FULL;
+    }
     else
       capacity_state = OK;
   }
@@ -857,9 +882,9 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   }
   else
   {
-    libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", charger_connected ? "on" : "off", NULL);
-    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", !charger_connected, NULL);
-    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", charger_connected, NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", is_charging ? "on" : "off", NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", !is_charging, NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", is_charging, NULL);
   }
 
   if (!calibrated && battery_info->power_supply_charge_design)
@@ -940,10 +965,15 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       DSME_MSG_INIT(DSM_MSGTYPE_SET_CHARGER_STATE);
     global_charger_connected = charger_connected;
     send_dbus_signal_(charger_connected ? "charger_connected" : "charger_disconnected");
-    if (capacity_state != FULL)
-      send_dbus_signal_(charger_connected ? "charger_charging_on" : "charger_charging_off");
     msg.connected = charger_connected;
     dsmesock_send(dsme_conn, &msg);
+  }
+
+  if (!check_for_changes || global_is_charging != is_charging)
+  {
+    global_is_charging = is_charging;
+    if (capacity_state != FULL || !is_charging)
+      send_dbus_signal_(is_charging ? "charger_charging_on" : "charger_charging_off");
   }
 
   return TRUE;
