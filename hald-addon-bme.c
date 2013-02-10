@@ -93,6 +93,7 @@ bme global_bme;
 
 int global_charger_connected = 0;
 int global_is_charging = 0;
+int fake_current_now = 0;
 
 dsmesock_connection_t * dsme_conn;
 
@@ -587,6 +588,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   int calibrated;
   int charger_connected;
   int is_charging;
+  int positive_rate;
   int capacity;
   int very_low = 0;
 
@@ -600,7 +602,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   else
     charger_connected = 0;
 
-  if (battery_info->power_supply_current_now > 0 && charger_connected)
+  if (battery_info->power_supply_current_now < 0)
+    positive_rate = 1;
+  else
+    positive_rate = 0;
+
+  if (positive_rate && charger_connected)
     is_charging = 1;
   else
     is_charging = 0;
@@ -630,7 +637,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "disconnected", NULL);
     libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "none", NULL);
     libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", "off", NULL);
-    libhal_device_set_property_bool(hal_ctx, udi, "maemo.rechargeable.positive_rate", FALSE, NULL); /* STATIC */
+    libhal_device_set_property_bool(hal_ctx, udi, "maemo.rechargeable.positive_rate", FALSE, NULL);
     libhal_device_set_property_string(hal_ctx, udi, "maemo.bme.version", "1.0", NULL); /* STATIC */
   }
 
@@ -883,12 +890,17 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   if (capacity_state == FULL && charger_connected)
   {
     libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", "full", NULL);
-    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", true, NULL);
-    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", true, NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", TRUE, NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", TRUE, NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "maemo.rechargeable.positive_rate", TRUE, NULL);
   }
   else
   {
-    libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", is_charging ? "on" : "off", NULL);
+    if (charger_connected && !is_charging)
+      libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", "error", NULL);
+    else
+      libhal_device_set_property_string(hal_ctx, udi, "maemo.rechargeable.charging_status", is_charging ? "on" : "off", NULL);
+    libhal_device_set_property_bool(hal_ctx, udi, "maemo.rechargeable.positive_rate", positive_rate, NULL);
     libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_discharging", !is_charging, NULL);
     libhal_device_set_property_bool(hal_ctx, udi, "battery.rechargeable.is_charging", is_charging, NULL);
   }
@@ -1049,6 +1061,12 @@ static gboolean poll_uevent(gpointer data)
   hald_addon_bme_get_bq27200_data(&battery_info);
   hald_addon_bme_get_bq27200_registers(&battery_info);
   hald_addon_bme_get_rx51_data(&battery_info);
+
+  if (fake_current_now) {
+     battery_info.power_supply_current_now = fake_current_now;
+     fake_current_now = 0;
+  }
+
   hald_addon_bme_update_hal(&battery_info,TRUE);
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
@@ -1095,6 +1113,9 @@ static gboolean hald_addon_bme_bq24150a_cb(GIOChannel *source, GIOCondition cond
     {
       strncpy(global_battery.power_supply_mode, line, sizeof(global_battery.power_supply_mode)-1);
       g_free(line);
+      /* set negative fake current now which means that battery is charging */
+      /* value for bq27x00_battery will be updated in next 30s */
+      fake_current_now = -1;
       poll_uevent(NULL);
       return TRUE;
     }
