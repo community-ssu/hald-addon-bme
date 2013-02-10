@@ -961,7 +961,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     }
   }
 
-  if (strstr(battery_info->power_supply_mode, "host"))
+  if (strstr(battery_info->power_supply_mode, "none"))
+  {
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "connected", NULL);
+    libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "host 100 mA", NULL);
+  }
+  else if (strstr(battery_info->power_supply_mode, "host"))
   {
     libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.connection_status", "connected", NULL);
     libhal_device_set_property_string(hal_ctx, udi, "maemo.charger.type", "host 500 mA", NULL);
