@@ -288,6 +288,15 @@ static gboolean send_dbus_signal_(const char *name)
   return send_dbus_signal(name, DBUS_TYPE_INVALID);
 }
 
+static gboolean send_dsme_empty(gpointer data G_GNUC_UNUSED)
+{
+  DSM_MSGTYPE_SET_BATTERY_STATE msg =
+    DSME_MSG_INIT(DSM_MSGTYPE_SET_BATTERY_STATE);
+  msg.empty = 1;
+  dsmesock_send(dsme_conn, &msg);
+  return FALSE;
+}
+
 static gboolean send_capacity_state_change()
 {
   const char * name ;
@@ -300,10 +309,7 @@ static gboolean send_capacity_state_change()
   }
   if (global_bme.charge_level.capacity_state == EMPTY)
   {
-    DSM_MSGTYPE_SET_BATTERY_STATE msg =
-      DSME_MSG_INIT(DSM_MSGTYPE_SET_BATTERY_STATE);
-    msg.empty = 1;
-    dsmesock_send(dsme_conn, &msg);
+    g_timeout_add_seconds(2,send_dsme_empty,NULL);
   }
   return send_dbus_signal_(name);
 }
