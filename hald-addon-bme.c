@@ -310,7 +310,7 @@ static gboolean send_capacity_state_change()
   }
   if (global_bme.charge_level.capacity_state == EMPTY)
   {
-    g_timeout_add_seconds(2,send_dsme_empty,NULL);
+    g_timeout_add_seconds(10,send_dsme_empty,NULL);
   }
   return send_dbus_signal_(name);
 }
