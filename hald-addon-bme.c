@@ -923,6 +923,13 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     CHECK_INT(power_supply_charge_full,
           libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.last_full", battery_info->power_supply_charge_full, NULL));
   }
+  else
+  {
+    battery_info->power_supply_charge_full = 0;
+    CHECK_INT(power_supply_charge_full,
+          libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.last_full", 0, NULL);
+          libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 0, NULL));
+  }
 
   charge_level_current = 8*(6.25+capacity)/100;
   if(global_bme.charge_level.current != charge_level_current)
