@@ -590,6 +590,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   int is_charging;
   int positive_rate;
   int capacity;
+  int no_voltage = 0;
   int very_low = 0;
 
   if(battery_info->power_supply_capacity < 0)
@@ -611,6 +612,9 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     is_charging = 1;
   else
     is_charging = 0;
+
+  if (battery_info->power_supply_voltage_now <= 0)
+    no_voltage = 1;
 
   if(!check_for_changes)
   {
@@ -688,7 +692,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_design) / (92*battery_info->power_supply_charge_design);
   else if(calibrated && battery_info->power_supply_charge_now > 0 && battery_info->power_supply_charge_full > 0)
     capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_full) / (92*battery_info->power_supply_charge_full);
-  else /* when battery is not calibrated or other data is missing, report some capacity from voltage */
+  else if(!no_voltage) /* when battery is not calibrated or other data is missing, report some capacity from voltage (if we have it) */
   {
     if (!charger_connected)
     {
@@ -727,6 +731,12 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       battery_info->power_supply_capacity = capacity*92/100+8;
     }
   }
+  else
+  {
+    /* otherwise we have no data, capacity is unknown and volage is not accesable */
+    capacity = 0;
+  }
+
 
   if (capacity < 0)
     capacity = 0;
@@ -757,7 +767,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
         else
           capacity_state = OK;
       }
-      else
+      else if (!no_voltage)
       {
         if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW) {
           capacity_state = LOW;
@@ -767,6 +777,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
         else
           capacity_state = OK;
       }
+      else
+        capacity_state = OK;
     }
     else if (!strcmp(battery_info->power_supply_capacity_level, "Low"))
       capacity_state = EMPTY;
@@ -795,7 +807,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       else
         capacity_state = OK;
     }
-    else
+    else if (!no_voltage)
     {
       if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_VERYLOW) {
         capacity_state = LOW;
@@ -805,6 +817,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       else
         capacity_state = OK;
     }
+    else
+      capacity_state = OK;
   }
   /* no maemo kernel-power or upstream kernel, but battery is calibrated */
   /* check charge_now threshold */
@@ -828,8 +842,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
       capacity_state = OK;
   }
   /* battery is not calibrated and no access to FC, EDV1 or EDVF flags */
-  /* use voltage threshold */
-  else
+  /* use voltage threshold (if voltage is accessable) */
+  else if (!no_voltage)
   {
     if (battery_info->power_supply_voltage_now <= POWER_SUPPLY_VOLTAGE_THRESHOLD_EMPTY)
       capacity_state = EMPTY;
@@ -848,6 +862,8 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
     else
       capacity_state = OK;
   }
+  else /* we do not know anything, report OK which will prevent device shutdown */
+    capacity_state = OK;
 
   if (battery_info->power_supply_status == STATUS_FULL)
     capacity_state = FULL;
