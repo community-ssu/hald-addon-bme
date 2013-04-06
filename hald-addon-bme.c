@@ -93,6 +93,7 @@ bme global_bme;
 
 int global_charger_connected = 0;
 int global_is_charging = 0;
+int global_is_full = 0;
 int fake_current_now = 0;
 
 dsmesock_connection_t * dsme_conn;
@@ -870,6 +871,14 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
 
   if ((capacity_state == LOW || capacity_state == EMPTY) && charger_connected)
     capacity_state = OK;
+
+  if (capacity_state == FULL)
+    global_is_full = 1;
+  else if (!charger_connected)
+    global_is_full = 0;
+
+  if (global_is_full)
+    capacity_state = FULL;
 
   if (capacity_state == FULL && !calibrated)
   {
