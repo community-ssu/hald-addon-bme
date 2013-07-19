@@ -94,7 +94,7 @@ bme global_bme;
 int global_charger_connected = 0;
 int global_is_charging = 0;
 int global_is_full = 0;
-int fake_current_now = 0;
+time_t force_charging = 0;
 
 dsmesock_connection_t * dsme_conn;
 
@@ -1099,10 +1099,9 @@ static gboolean poll_uevent(gpointer data)
   hald_addon_bme_get_bq27200_registers(&battery_info);
   hald_addon_bme_get_rx51_data(&battery_info);
 
-  if (fake_current_now) {
-     battery_info.power_supply_current_now = fake_current_now;
-     fake_current_now = 0;
-  }
+  /* set negative fake current now which means that battery is charging */
+  if (force_charging > time(NULL))
+     battery_info.power_supply_current_now = -1;
 
   hald_addon_bme_update_hal(&battery_info,TRUE);
 
@@ -1150,9 +1149,8 @@ static gboolean hald_addon_bme_bq24150a_cb(GIOChannel *source, GIOCondition cond
     {
       strncpy(global_battery.power_supply_mode, line, sizeof(global_battery.power_supply_mode)-1);
       g_free(line);
-      /* set negative fake current now which means that battery is charging */
-      /* value for bq27x00_battery will be updated in next 30s */
-      fake_current_now = -1;
+      /* force charging for next 10s */
+      force_charging = time(NULL)+10;
       poll_uevent(NULL);
       return TRUE;
     }
