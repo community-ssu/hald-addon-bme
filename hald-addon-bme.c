@@ -690,9 +690,19 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   /* bq27200 report percentage capacity against last full capacity */
   /* we will recalculate percentage capacity against design capacity reported by rx51_battery (if driver is available) */
   if(calibrated && battery_info->power_supply_charge_now > 0 && battery_info->power_supply_charge_design > 0)
-    capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_design) / (92*battery_info->power_supply_charge_design);
+  {
+    if (100*battery_info->power_supply_charge_now > 8*battery_info->power_supply_charge_design)
+      capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_design) / (92*battery_info->power_supply_charge_design);
+    else
+      capacity = 0;
+  }
   else if(calibrated && battery_info->power_supply_charge_now > 0 && battery_info->power_supply_charge_full > 0)
-    capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_full) / (92*battery_info->power_supply_charge_full);
+  {
+    if (100*battery_info->power_supply_charge_now > 8*battery_info->power_supply_charge_full)
+      capacity = 100 * (100*battery_info->power_supply_charge_now - 8*battery_info->power_supply_charge_full) / (92*battery_info->power_supply_charge_full);
+    else
+      capacity = 0;
+  }
   else if(!no_voltage) /* when battery is not calibrated or other data is missing, report some capacity from voltage (if we have it) */
   {
     if (!charger_connected)
@@ -958,7 +968,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   }
 
   charge_level_current = 8*(6.25+capacity)/100;
-  if(global_bme.charge_level.current != charge_level_current)
+  if(global_bme.charge_level.current != charge_level_current && capacity_state != EMPTY)
   {
     global_bme.charge_level.current = charge_level_current;
     libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.current",charge_level_current, NULL);
