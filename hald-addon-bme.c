@@ -968,11 +968,14 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   }
 
   charge_level_current = 8*(6.25+capacity)/100;
-  if(global_bme.charge_level.current != charge_level_current && capacity_state != EMPTY)
+  if(global_bme.charge_level.current != charge_level_current)
   {
     global_bme.charge_level.current = charge_level_current;
-    libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.current",charge_level_current, NULL);
-    send_battery_state_changed(charge_level_current);
+    if (capacity_state != EMPTY)
+    {
+      libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.current",charge_level_current, NULL);
+      send_battery_state_changed(charge_level_current);
+    }
   }
 
   if (!calibrated)
