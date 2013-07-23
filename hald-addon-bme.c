@@ -1262,7 +1262,7 @@ static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
   mce_pattern_deactivate(PATTERN_CHARGING);
   mce_pattern_deactivate(PATTERN_BOOST);
 
-  if (global_pattern != PATTERN_NONE && mce_pattern_activate(global_pattern))
+  if (global_pattern != PATTERN_NONE && !mce_pattern_activate(global_pattern))
     global_pattern = PATTERN_NONE;
 
   return FALSE;
