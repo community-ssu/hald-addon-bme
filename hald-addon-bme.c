@@ -295,7 +295,8 @@ static gboolean send_dsme_empty(gpointer data G_GNUC_UNUSED)
   DSM_MSGTYPE_SET_BATTERY_STATE msg =
     DSME_MSG_INIT(DSM_MSGTYPE_SET_BATTERY_STATE);
   msg.empty = 1;
-  dsmesock_send(dsme_conn, &msg);
+  if (!global_is_charging)
+    dsmesock_send(dsme_conn, &msg);
   return FALSE;
 }
 
