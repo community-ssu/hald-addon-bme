@@ -17,3 +17,10 @@ Description: hal battery addon for bme
  Also provides compatibility with previously used bme-dbus-proxy by
  implementing battery and charger messages' forwarding from BME to
  status bar applet through DBus.
+
+Package: hald-addon-bme-dev
+Architecture: any
+Depends: ${misc:Depends}
+Description: BME HAL addon development headers
+ Development headers for Battery Management Entity addon for Hardware
+ Abstraction Layer.
