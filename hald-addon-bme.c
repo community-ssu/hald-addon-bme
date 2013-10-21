@@ -582,8 +582,10 @@ static const char * get_capacity_state_string()
 
 static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_for_changes)
 {
-#define CHECK_INT(f,fun) if( !check_for_changes || (global_battery.f != battery_info->f)) \
-  log_print(#f " changed,updating to %d",battery_info->f);fun
+#define CHECK_INT(f,fun) do { \
+  if( !check_for_changes || (global_battery.f != battery_info->f)) \
+    log_print(#f " changed,updating to %d",battery_info->f);fun; \
+  } while ( 0 )
 
   uint32 charge_level_current;
   uint32 capacity_state;
