@@ -954,10 +954,16 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   {
     if (battery_info->power_supply_charge_design > 0)
     {
-      if (battery_info->power_supply_charge_full > battery_info->power_supply_charge_design)
-        battery_info->power_supply_charge_full = battery_info->power_supply_charge_design;
-      CHECK_INT(power_supply_charge_full,
-            libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design, NULL));
+      if (battery_info->power_supply_charge_full <= battery_info->power_supply_charge_design)
+      {
+        CHECK_INT(power_supply_charge_full,
+              libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 8*battery_info->power_supply_charge_full/battery_info->power_supply_charge_design, NULL));
+      }
+      else
+      {
+        CHECK_INT(power_supply_charge_full,
+              libhal_device_set_property_int (hal_ctx, udi, "battery.charge_level.last_full", 8, NULL));
+      }
     }
     CHECK_INT(power_supply_charge_full,
           libhal_device_set_property_int (hal_ctx, udi, "battery.reporting.last_full", battery_info->power_supply_charge_full, NULL));
