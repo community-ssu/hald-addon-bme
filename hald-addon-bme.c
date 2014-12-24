@@ -98,7 +98,7 @@ time_t force_charging = 0;
 
 dsmesock_connection_t * dsme_conn;
 
-enum { PATTERN_NONE, PATTERN_FULL, PATTERN_CHARGING, PATTERN_BOOST } global_pattern;
+gboolean global_boost = FALSE;
 
 /*#define DEBUG*/
 
@@ -1057,7 +1057,7 @@ static gboolean hald_addon_bme_update_hal(battery * battery_info,gboolean check_
   return TRUE;
 }
 
-static gboolean mce_pattern_request(const char * pattern, const char * request)
+static gboolean mce_request(const char * argument, const char * request)
 {
   DBusMessage * msg;
   int sent = 0;
@@ -1066,7 +1066,7 @@ static gboolean mce_pattern_request(const char * pattern, const char * request)
   if (!msg)
     return FALSE;
 
-  if (dbus_message_append_args(msg, DBUS_TYPE_STRING, &pattern, DBUS_TYPE_INVALID) &&
+  if (dbus_message_append_args(msg, DBUS_TYPE_STRING, &argument, DBUS_TYPE_INVALID) &&
       dbus_connection_send(system_dbus, msg, 0))
     sent = 1;
 
@@ -1076,40 +1076,13 @@ static gboolean mce_pattern_request(const char * pattern, const char * request)
   if (!sent)
     return FALSE;
 
-  log_print("%s: %s\n", request, pattern);
+  log_print("%s: %s\n", request, argument);
   return TRUE;
-}
-
-static const char * get_pattern_name(unsigned int pattern)
-{
-  switch(pattern)
-  {
-    case PATTERN_FULL: return "PatternBatteryFull";
-    case PATTERN_CHARGING: return "PatternBatteryCharging";
-    case PATTERN_BOOST: return "PatternBoost";
-    default: return NULL;
-  }
-}
-
-static gboolean mce_pattern_activate(unsigned int pattern)
-{
-  const char * name = get_pattern_name(pattern);
-  if (!name)
-    return FALSE;
-  return mce_pattern_request(name, "req_led_pattern_activate");
-}
-
-static gboolean mce_pattern_deactivate(unsigned int pattern)
-{
-  const char * name = get_pattern_name(pattern);
-  if (!name)
-    return FALSE;
-  return mce_pattern_request(name, "req_led_pattern_deactivate");
 }
 
 static gboolean poll_uevent(gpointer data)
 {
-  unsigned int pattern;
+  gboolean boost;
   battery battery_info;
   memset(&battery_info, 0, sizeof(battery_info));
   battery_info.power_supply_capacity = -1;
@@ -1130,22 +1103,15 @@ static gboolean poll_uevent(gpointer data)
 
   memcpy(&global_battery,&battery_info,sizeof(global_battery));
 
-  if (global_bme.charge_level.capacity_state == FULL && global_charger_connected)
-    pattern = PATTERN_FULL;
-  else if (global_bme.charge_level.capacity_state != FULL && global_charger_connected)
-    pattern = PATTERN_CHARGING;
-  else if (strstr(global_battery.power_supply_mode, "boost"))
-    pattern = PATTERN_BOOST;
-  else
-    pattern = PATTERN_NONE;
+  boost = (gboolean)strstr(global_battery.power_supply_mode, "boost");
 
-  if (global_pattern != pattern)
+  if (global_boost != boost)
   {
-    if (global_pattern != PATTERN_NONE && mce_pattern_deactivate(global_pattern))
-      global_pattern = PATTERN_NONE;
+    if (global_boost && mce_request("PatternBoost", "req_led_pattern_deactivate"))
+      global_boost = FALSE;
 
-    if (global_pattern == PATTERN_NONE && mce_pattern_activate(pattern))
-      global_pattern = pattern;
+    if (!global_boost && mce_request("PatternBoost", "req_led_pattern_activate"))
+      global_boost = TRUE;
   }
 
   if (data) return FALSE;
@@ -1267,12 +1233,10 @@ static gboolean hald_addon_bme_bq24150a_setup_poll(gpointer data G_GNUC_UNUSED)
 
   hald_addon_bme_disable_stat_pin();
 
-  mce_pattern_deactivate(PATTERN_FULL);
-  mce_pattern_deactivate(PATTERN_CHARGING);
-  mce_pattern_deactivate(PATTERN_BOOST);
+  mce_request("PatternBoost", "req_led_pattern_deactivate");
 
-  if (global_pattern != PATTERN_NONE && !mce_pattern_activate(global_pattern))
-    global_pattern = PATTERN_NONE;
+  if (global_boost && !mce_request("PatternBoost", "req_led_pattern_activate"))
+    global_boost = FALSE;
 
   return FALSE;
 }
