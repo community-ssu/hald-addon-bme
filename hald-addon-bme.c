@@ -310,6 +310,10 @@ static gboolean send_capacity_state_change()
     case EMPTY:name = "battery_empty";break;
     default:return TRUE;
   }
+  if (global_bme.charge_level.capacity_state == FULL && !global_charger_connected)
+  {
+    return TRUE;
+  }
   if (global_bme.charge_level.capacity_state == EMPTY)
   {
     g_timeout_add_seconds(10,send_dsme_empty,NULL);
